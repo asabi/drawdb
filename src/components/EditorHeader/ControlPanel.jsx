@@ -92,6 +92,19 @@ export default function ControlPanel({
   backendAvailable,
 }) {
   const [modal, setModal] = useState(MODAL.NONE);
+
+  // Listen for openFromDatabase event
+  useEffect(() => {
+    const handleOpenFromDatabase = () => {
+      setModal(MODAL.OPEN);
+    };
+
+    window.addEventListener('openFromDatabase', handleOpenFromDatabase);
+    
+    return () => {
+      window.removeEventListener('openFromDatabase', handleOpenFromDatabase);
+    };
+  }, []);
   const [sidesheet, setSidesheet] = useState(SIDESHEET.NONE);
   const [showEditName, setShowEditName] = useState(false);
   const [importDb, setImportDb] = useState("");

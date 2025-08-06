@@ -112,6 +112,21 @@ export default function WorkSpace() {
     
     return () => clearInterval(interval);
   }, [backendAvailable]);
+
+  // Check for openFromDatabase parameter and trigger open modal
+  useEffect(() => {
+    const openFromDatabase = searchParams.get('openFromDatabase');
+    if (openFromDatabase === 'true') {
+      // Remove the parameter from URL
+      searchParams.delete('openFromDatabase');
+      setSearchParams(searchParams);
+      
+      // Trigger the open modal by dispatching a custom event
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('openFromDatabase'));
+      }, 100); // Small delay to ensure everything is loaded
+    }
+  }, [searchParams, setSearchParams]);
   const handleResize = (e) => {
     if (!resize) return;
     const w = isRtl(i18n.language) ? window.innerWidth - e.clientX : e.clientX;

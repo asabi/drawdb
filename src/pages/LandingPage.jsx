@@ -92,9 +92,16 @@ export default function LandingPage() {
               </button>
               <Link
                 to="/editor"
-                className="inline-block py-3 text-white transition-all duration-300 rounded-full shadow-lg bg-sky-900 ps-7 pe-6 hover:bg-sky-800"
+                className="inline-block py-3 mb-4 xl:mb-0 mr-4 text-white transition-all duration-300 rounded-full shadow-lg bg-sky-900 ps-7 pe-6 hover:bg-sky-800"
               >
                 Try it for yourself <i className="bi bi-arrow-right ms-1"></i>
+              </Link>
+              <Link
+                to="/editor?openFromDatabase=true"
+                className="inline-block py-3 transition-all duration-300 bg-emerald-600 text-white rounded-full shadow-lg px-9 hover:bg-emerald-700"
+              >
+                <i className="bi bi-database me-2"></i>
+                Open from Database
               </Link>
             </div>
           </div>
