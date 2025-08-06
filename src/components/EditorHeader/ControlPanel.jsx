@@ -1501,6 +1501,7 @@ export default function ControlPanel({
         setExportData={setExportData}
         title={title}
         setTitle={setTitle}
+        diagramId={diagramId}
         setDiagramId={setDiagramId}
         setModal={setModal}
         importFrom={importFrom}

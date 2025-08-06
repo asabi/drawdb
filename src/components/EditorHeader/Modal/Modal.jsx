@@ -52,6 +52,7 @@ export default function Modal({
   setModal,
   title,
   setTitle,
+  diagramId,
   setDiagramId,
   exportData,
   setExportData,
@@ -342,7 +343,7 @@ export default function Modal({
       case MODAL.LANGUAGE:
         return <Language />;
       case MODAL.SHARE:
-        return <Share title={title} setModal={setModal} />;
+        return <Share title={title} setModal={setModal} diagramId={diagramId} setDiagramId={setDiagramId} />;
       default:
         return <></>;
     }

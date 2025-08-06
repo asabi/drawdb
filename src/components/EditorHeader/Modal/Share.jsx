@@ -13,9 +13,9 @@ import {
 } from "../../../hooks";
 import { databases } from "../../../data/databases";
 import { MODAL } from "../../../data/constants";
-import { create, del, patch } from "../../../api/gists";
+import { createDiagram, updateDiagram, deleteDiagram } from "../../../api/diagrams";
 
-export default function Share({ title, setModal }) {
+export default function Share({ title, setModal, diagramId, setDiagramId }) {
   const { t } = useTranslation();
   const { gistId, setGistId } = useContext(IdContext);
   const [loading, setLoading] = useState(true);
@@ -26,67 +26,94 @@ export default function Share({ title, setModal }) {
   const { enums } = useEnums();
   const { transform } = useTransform();
   const [error, setError] = useState(null);
-  const url =
-    window.location.origin + window.location.pathname + "?shareId=" + gistId;
+  const [shareUrl, setShareUrl] = useState("");
 
-  const diagramToString = useCallback(() => {
-    return JSON.stringify({
-      title,
+  const diagramContent = useCallback(() => {
+    return {
       tables: tables,
       relationships: relationships,
       notes: notes,
-      subjectAreas: areas,
-      database: database,
+      areas: areas,
+      tasks: [], // Add tasks if you have them
+      transform: transform,
       ...(databases[database].hasTypes && { types: types }),
       ...(databases[database].hasEnums && { enums: enums }),
-      transform: transform,
-    });
+    };
   }, [
     areas,
     notes,
     tables,
     relationships,
     database,
-    title,
     enums,
     types,
     transform,
   ]);
 
+  const generateShareUrl = useCallback((id) => {
+    return window.location.origin + window.location.pathname + "?diagramId=" + id;
+  }, []);
+
   const unshare = useCallback(async () => {
     try {
-      await del(gistId);
-      setGistId("");
+      if (diagramId) {
+        await deleteDiagram(diagramId);
+        setDiagramId(null);
+      }
+      if (gistId) {
+        // Keep gist fallback for backward compatibility
+        setGistId("");
+      }
       setModal(MODAL.NONE);
     } catch (e) {
       console.error(e);
       setError(e);
     }
-  }, [gistId, setGistId, setModal]);
+  }, [diagramId, setDiagramId, gistId, setGistId, setModal]);
 
   useEffect(() => {
     const updateOrGenerateLink = async () => {
       try {
         setLoading(true);
-        if (!gistId || gistId === "") {
-          const id = await create(diagramToString());
-          setGistId(id);
+        setError(null);
+        
+        if (diagramId) {
+          try {
+            // Try to update existing diagram
+            await updateDiagram(diagramId, title, database, diagramContent());
+            setShareUrl(generateShareUrl(diagramId));
+          } catch (updateError) {
+            // If update fails (404), create a new diagram
+            console.log('Update failed, creating new diagram:', updateError.message);
+            const result = await createDiagram(title, database, diagramContent());
+            setDiagramId(result.id);
+            setShareUrl(generateShareUrl(result.id));
+          }
         } else {
-          await patch(gistId, diagramToString());
+          // Create new diagram
+          const result = await createDiagram(title, database, diagramContent());
+          setDiagramId(result.id);
+          setShareUrl(generateShareUrl(result.id));
         }
       } catch (e) {
-        console.error(e);
+        console.error('Error saving to database:', e);
         setError(e);
       } finally {
         setLoading(false);
       }
     };
     updateOrGenerateLink();
-  }, [gistId, diagramToString, setGistId]);
+  }, [diagramId, title, database, diagramContent, setDiagramId, generateShareUrl]);
 
   const copyLink = () => {
+    const urlToCopy = shareUrl || (gistId ? window.location.origin + window.location.pathname + "?shareId=" + gistId : "");
+    if (!urlToCopy) {
+      Toast.error(t("no_share_link_available"));
+      return;
+    }
+    
     navigator.clipboard
-      .writeText(url)
+      .writeText(urlToCopy)
       .then(() => {
         Toast.success(t("copied_to_clipboard"));
       })
@@ -98,37 +125,52 @@ export default function Share({ title, setModal }) {
   if (loading)
     return (
       <div className="text-blue-500 text-center">
-        <Spin size="middle" />
-        <div>{t("loading")}</div>
+        <Spin size="large" />
+        <div className="mt-2">{t("generating_share_link")}</div>
       </div>
     );
 
+  if (error) {
+    return (
+      <div>
+        <Banner
+          type="danger"
+          description={error.message || t("oops_smth_went_wrong")}
+        />
+        <div className="mt-4 flex gap-2">
+          <Button onClick={() => setModal(MODAL.NONE)}>
+            {t("close")}
+          </Button>
+          <Button type="primary" onClick={() => window.location.reload()}>
+            {t("retry")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      {error && (
-        <Banner
-          description={t("oops_smth_went_wrong")}
-          type="danger"
-          closeIcon={null}
-          fullMode={false}
-        />
-      )}
-      {!error && (
-        <>
-          <div className="flex gap-3">
-            <Input value={url} size="large" />
-          </div>
-          <div className="text-xs mt-2">{t("share_info")}</div>
-          <div className="flex gap-2 mt-3">
-            <Button block onClick={unshare}>
-              {t("unshare")}
-            </Button>
-            <Button block theme="solid" icon={<IconLink />} onClick={copyLink}>
-              {t("copy_link")}
-            </Button>
-          </div>
-        </>
-      )}
+      <div className="mb-4">
+        <div className="text-sm text-gray-600 mb-2">{t("share_link")}</div>
+        <div className="flex gap-2">
+          <Input
+            value={shareUrl || (gistId ? window.location.origin + window.location.pathname + "?shareId=" + gistId : "")}
+            readOnly
+            suffix={<IconLink />}
+          />
+          <Button onClick={copyLink}>{t("copy")}</Button>
+        </div>
+      </div>
+      
+      <div className="flex gap-2">
+        <Button onClick={() => setModal(MODAL.NONE)}>
+          {t("close")}
+        </Button>
+        <Button type="danger" onClick={unshare}>
+          {t("unshare")}
+        </Button>
+      </div>
     </div>
   );
 }
