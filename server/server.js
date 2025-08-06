@@ -18,7 +18,7 @@ app.use(compression());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://drawdb.com'] 
-    : ['http://localhost:5173', 'http://127.0.0.1:5173'],
+    : true, // Allow all origins in development
   credentials: true
 }));
 
@@ -142,9 +142,10 @@ async function startServer() {
   try {
     await db.connect();
     
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Health check: http://localhost:${PORT}/api/health`);
+      console.log(`Network access: http://0.0.0.0:${PORT}/api/health`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
