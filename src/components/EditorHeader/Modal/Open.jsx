@@ -1,15 +1,19 @@
 import { db } from "../../../data/db";
-import { Banner } from "@douyinfe/semi-ui";
+import { Banner, Modal, Button } from "@douyinfe/semi-ui";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useTranslation } from "react-i18next";
 import { databases } from "../../../data/databases";
-import { getRecentDiagrams } from "../../../api/diagrams";
+import { getRecentDiagrams, deleteDiagram } from "../../../api/diagrams";
 import { useState, useEffect } from "react";
+import { IconDeleteStroked } from "@douyinfe/semi-icons";
 
 export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
   const [backendDiagrams, setBackendDiagrams] = useState([]);
   const [useBackend, setUseBackend] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [diagramToDelete, setDiagramToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const localDiagrams = useLiveQuery(() => db.diagrams.toArray());
   const { t } = useTranslation();
 
@@ -47,6 +51,48 @@ export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
 
     return sizeStr;
   };
+
+  const handleDeleteClick = (e, diagram) => {
+    e.stopPropagation(); // Prevent row selection
+    setDiagramToDelete(diagram);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!diagramToDelete) return;
+    
+    setDeleting(true);
+    try {
+      if (useBackend) {
+        // Delete from backend
+        await deleteDiagram(diagramToDelete.id);
+        // Remove from local state
+        setBackendDiagrams(prev => prev.filter(d => d.id !== diagramToDelete.id));
+      } else {
+        // Delete from local storage
+        await db.diagrams.delete(diagramToDelete.id);
+      }
+      
+      // If the deleted diagram was selected, clear selection
+      if (selectedDiagramId === diagramToDelete.id) {
+        setSelectedDiagramId(null);
+      }
+      
+      console.log('Diagram deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete diagram:', error);
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+      setDiagramToDelete(null);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteModal(false);
+    setDiagramToDelete(null);
+  };
+
   return (
     <div>
       {loading ? (
@@ -76,6 +122,7 @@ export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
                 <th>{t("last_modified")}</th>
                 <th>{t("size")}</th>
                 <th>{t("type")}</th>
+                <th className="w-12"></th> {/* Delete button column */}
               </tr>
             </thead>
             <tbody>
@@ -110,6 +157,16 @@ export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
                     <td className="py-1">
                       {databases[databaseType]?.name ?? "Generic"}
                     </td>
+                    <td className="py-1">
+                      <Button
+                        type="danger"
+                        theme="borderless"
+                        size="small"
+                        icon={<IconDeleteStroked />}
+                        onClick={(e) => handleDeleteClick(e, d)}
+                        className="opacity-60 hover:opacity-100 transition-opacity"
+                      />
+                    </td>
                   </tr>
                 );
               })}
@@ -117,6 +174,25 @@ export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
           </table>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        title={t("delete_diagram")}
+        visible={showDeleteModal}
+        onOk={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+        confirmLoading={deleting}
+        okText={t("delete")}
+        cancelText={t("cancel")}
+        okType="danger"
+      >
+        <p>{t("are_you_sure_delete_diagram")}</p>
+        {diagramToDelete && (
+          <p className="mt-2 text-sm text-gray-600">
+            <strong>{diagramToDelete.name || diagramToDelete.title}</strong>
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }
