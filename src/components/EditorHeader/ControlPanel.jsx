@@ -88,6 +88,8 @@ export default function ControlPanel({
   title,
   setTitle,
   lastSaved,
+  useBackendStorage,
+  backendAvailable,
 }) {
   const [modal, setModal] = useState(MODAL.NONE);
   const [sidesheet, setSidesheet] = useState(SIDESHEET.NONE);
@@ -1691,21 +1693,23 @@ export default function ControlPanel({
   }
 
   function getState() {
+    const storageMode = useBackendStorage && backendAvailable ? "🗄️ Database" : "💾 Local";
+    
     switch (saveState) {
       case State.NONE:
-        return t("no_changes");
+        return `${storageMode} - ${t("no_changes")}`;
       case State.LOADING:
-        return t("loading");
+        return `${storageMode} - ${t("loading")}`;
       case State.SAVED:
-        return `${t("last_saved")} ${lastSaved}`;
+        return `${storageMode} - ${t("last_saved")} ${lastSaved}`;
       case State.SAVING:
-        return t("saving");
+        return `${storageMode} - ${t("saving")}`;
       case State.ERROR:
-        return t("failed_to_save");
+        return `${storageMode} - ${t("failed_to_save")}`;
       case State.FAILED_TO_LOAD:
-        return t("failed_to_load");
+        return `${storageMode} - ${t("failed_to_load")}`;
       default:
-        return "";
+        return storageMode;
     }
   }
 

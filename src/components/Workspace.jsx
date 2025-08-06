@@ -25,6 +25,7 @@ import { databases } from "../data/databases";
 import { isRtl } from "../i18n/utils/rtl";
 import { useSearchParams } from "react-router-dom";
 import { get } from "../api/gists";
+import { createDiagram, updateDiagram, getDiagram, getRecentDiagrams, healthCheck } from "../api/diagrams";
 
 export const IdContext = createContext({ gistId: "", setGistId: () => {} });
 
@@ -35,6 +36,8 @@ export default function WorkSpace() {
   const [gistId, setGistId] = useState("");
   const [loadedFromGistId, setLoadedFromGistId] = useState("");
   const [title, setTitle] = useState("Untitled Diagram");
+  const [backendAvailable, setBackendAvailable] = useState(false);
+  const [useBackendStorage, setUseBackendStorage] = useState(false);
   const [resize, setResize] = useState(false);
   const [width, setWidth] = useState(SIDEPANEL_MIN_WIDTH);
   const [lastSaved, setLastSaved] = useState("");
@@ -60,6 +63,24 @@ export default function WorkSpace() {
   const { undoStack, redoStack, setUndoStack, setRedoStack } = useUndoRedo();
   const { t, i18n } = useTranslation();
   let [searchParams, setSearchParams] = useSearchParams();
+
+  // Check backend availability on component mount
+  useEffect(() => {
+    const checkBackend = async () => {
+      console.log('Checking backend availability...');
+      try {
+        await healthCheck();
+        setBackendAvailable(true);
+        setUseBackendStorage(true);
+        console.log('✅ Backend is available, using database storage');
+      } catch (error) {
+        console.log('❌ Backend not available, using local storage:', error.message);
+        setBackendAvailable(false);
+        setUseBackendStorage(false);
+      }
+    };
+    checkBackend();
+  }, []);
   const handleResize = (e) => {
     if (!resize) return;
     const w = isRtl(i18n.language) ? window.innerWidth - e.clientX : e.clientX;
@@ -67,63 +88,130 @@ export default function WorkSpace() {
   };
 
   const save = useCallback(async () => {
+    console.log('Save function called, saveState:', saveState, 'useBackendStorage:', useBackendStorage, 'backendAvailable:', backendAvailable);
+    console.log('🔍 STORAGE MODE:', useBackendStorage && backendAvailable ? 'BACKEND DATABASE' : 'LOCAL STORAGE');
     if (saveState !== State.SAVING) return;
 
     const name = window.name.split(" ");
     const op = name[0];
     const saveAsDiagram = window.name === "" || op === "d" || op === "lt";
+    console.log('Save operation:', { name: window.name, op, saveAsDiagram });
 
     if (saveAsDiagram) {
       searchParams.delete("shareId");
       setSearchParams(searchParams);
-      if ((id === 0 && window.name === "") || op === "lt") {
-        await db.diagrams
-          .add({
-            database: database,
-            name: title,
-            gistId: gistId ?? "",
-            lastModified: new Date(),
+      
+      try {
+        if (useBackendStorage && backendAvailable) {
+          console.log('Using backend storage for save');
+          // Use backend storage
+          const diagramContent = {
             tables: tables,
-            references: relationships,
+            relationships: relationships,
             notes: notes,
             areas: areas,
-            todos: tasks,
-            pan: transform.pan,
-            zoom: transform.zoom,
-            loadedFromGistId: loadedFromGistId,
+            tasks: tasks,
+            transform: transform,
             ...(databases[database].hasEnums && { enums: enums }),
             ...(databases[database].hasTypes && { types: types }),
-          })
-          .then((id) => {
-            setId(id);
-            window.name = `d ${id}`;
+          };
+
+          if ((id === 0 && window.name === "") || op === "lt") {
+            // Create new diagram
+            console.log('Creating new diagram with backend');
+            const result = await createDiagram(title, database, diagramContent);
+            console.log('Diagram created successfully:', result);
+            setId(result.id);
+            window.name = `d ${result.id}`;
             setSaveState(State.SAVED);
             setLastSaved(new Date().toLocaleString());
-          });
-      } else {
-        await db.diagrams
-          .update(id, {
-            database: database,
-            name: title,
-            lastModified: new Date(),
-            tables: tables,
-            references: relationships,
-            notes: notes,
-            areas: areas,
-            todos: tasks,
-            gistId: gistId ?? "",
-            pan: transform.pan,
-            zoom: transform.zoom,
-            loadedFromGistId: loadedFromGistId,
-            ...(databases[database].hasEnums && { enums: enums }),
-            ...(databases[database].hasTypes && { types: types }),
-          })
-          .then(() => {
-            setSaveState(State.SAVED);
-            setLastSaved(new Date().toLocaleString());
-          });
+          } else {
+            // Update existing diagram
+            console.log('Updating existing diagram with backend, id:', id);
+            try {
+              await updateDiagram(id, title, database, diagramContent);
+              console.log('Diagram updated successfully');
+              setSaveState(State.SAVED);
+              setLastSaved(new Date().toLocaleString());
+            } catch (error) {
+              if (error.response?.status === 404) {
+                // Diagram doesn't exist in backend, create it instead
+                console.log('Diagram not found in backend, creating new one');
+                const result = await createDiagram(title, database, diagramContent);
+                console.log('Diagram created successfully:', result);
+                setId(result.id);
+                window.name = `d ${result.id}`;
+                setSaveState(State.SAVED);
+                setLastSaved(new Date().toLocaleString());
+              } else {
+                throw error;
+              }
+            }
+          }
+        } else {
+          console.log('Using local storage for save (backend not available)');
+          // Fallback to local storage
+          if ((id === 0 && window.name === "") || op === "lt") {
+            await db.diagrams
+              .add({
+                database: database,
+                name: title,
+                gistId: gistId ?? "",
+                lastModified: new Date(),
+                tables: tables,
+                references: relationships,
+                notes: notes,
+                areas: areas,
+                todos: tasks,
+                pan: transform.pan,
+                zoom: transform.zoom,
+                loadedFromGistId: loadedFromGistId,
+                ...(databases[database].hasEnums && { enums: enums }),
+                ...(databases[database].hasTypes && { types: types }),
+              })
+              .then((id) => {
+                setId(id);
+                window.name = `d ${id}`;
+                setSaveState(State.SAVED);
+                setLastSaved(new Date().toLocaleString());
+              });
+          } else {
+            await db.diagrams
+              .update(id, {
+                database: database,
+                name: title,
+                lastModified: new Date(),
+                tables: tables,
+                references: relationships,
+                notes: notes,
+                areas: areas,
+                todos: tasks,
+                gistId: gistId ?? "",
+                pan: transform.pan,
+                zoom: transform.zoom,
+                loadedFromGistId: loadedFromGistId,
+                ...(databases[database].hasEnums && { enums: enums }),
+                ...(databases[database].hasTypes && { types: types }),
+              })
+              .then(() => {
+                setSaveState(State.SAVED);
+                setLastSaved(new Date().toLocaleString());
+              });
+          }
+        }
+      } catch (error) {
+        console.error('Save error:', error);
+        console.error('Save error details:', {
+          useBackendStorage,
+          backendAvailable,
+          id,
+          windowName: window.name,
+          error: error.message
+        });
+        setSaveState(State.ERROR);
       }
     } else {
+      // Templates always use local storage
       await db.templates
         .update(id, {
           database: database,
@@ -164,10 +252,91 @@ export default function WorkSpace() {
     gistId,
     loadedFromGistId,
     saveState,
+    useBackendStorage,
+    backendAvailable,
   ]);
 
   const load = useCallback(async () => {
+    // Check for diagramId in URL (backend sharing)
+    const diagramId = searchParams.get('diagramId');
+    if (diagramId && useBackendStorage && backendAvailable) {
+      try {
+        console.log('Loading diagram from backend:', diagramId);
+        const diagram = await getDiagram(diagramId);
+        
+        setDatabase(diagram.databaseType);
+        setId(diagram.id);
+        setTitle(diagram.title);
+        setTables(diagram.content.tables);
+        setRelationships(diagram.content.relationships);
+        setNotes(diagram.content.notes);
+        setAreas(diagram.content.areas);
+        setTasks(diagram.content.tasks ?? []);
+        setTransform(diagram.content.transform);
+        if (databases[diagram.databaseType].hasTypes) {
+          setTypes(diagram.content.types ?? []);
+        }
+        if (databases[diagram.databaseType].hasEnums) {
+          setEnums(diagram.content.enums ?? []);
+        }
+        window.name = `d ${diagram.id}`;
+        return;
+      } catch (error) {
+        console.error('Failed to load diagram from backend:', error);
+        // Fall back to local storage
+      }
+    }
+
+    // Check for shareId in URL (legacy Gist sharing)
+    const shareId = searchParams.get('shareId');
+    if (shareId) {
+      await loadFromGist(shareId);
+      return;
+    }
+
     const loadLatestDiagram = async () => {
+      if (useBackendStorage && backendAvailable) {
+        // Try to load from backend first
+        try {
+          console.log('Loading recent diagrams from backend...');
+          const recentDiagrams = await getRecentDiagrams(1);
+          if (recentDiagrams && recentDiagrams.length > 0) {
+            const latestDiagram = recentDiagrams[0];
+            console.log('Loading latest diagram from backend:', latestDiagram);
+            
+            // Load the full diagram data
+            const fullDiagram = await getDiagram(latestDiagram.id);
+            if (fullDiagram) {
+              setDatabase(fullDiagram.databaseType);
+              setId(fullDiagram.id);
+              setTitle(fullDiagram.title);
+              setTables(fullDiagram.content.tables || []);
+              setRelationships(fullDiagram.content.relationships || []);
+              setNotes(fullDiagram.content.notes || []);
+              setAreas(fullDiagram.content.areas || []);
+              setTasks(fullDiagram.content.tasks || []);
+              setTransform(fullDiagram.content.transform || { pan: { x: 0, y: 0 }, zoom: 1 });
+              if (databases[fullDiagram.databaseType]?.hasTypes) {
+                setTypes(fullDiagram.content.types || []);
+              }
+              if (databases[fullDiagram.databaseType]?.hasEnums) {
+                setEnums(fullDiagram.content.enums || []);
+              }
+              window.name = `d ${fullDiagram.id}`;
+              return;
+            }
+          } else {
+            console.log('No diagrams found in backend');
+            window.name = "";
+            if (selectedDb === "") setShowSelectDbModal(true);
+            return;
+          }
+        } catch (error) {
+          console.log('Backend load failed, falling back to local storage:', error.message);
+        }
+      }
+      
+      // Fallback to local storage
       await db.diagrams
         .orderBy("lastModified")
         .last()
@@ -206,6 +375,39 @@ export default function WorkSpace() {
     };
 
     const loadDiagram = async (id) => {
+      if (useBackendStorage && backendAvailable) {
+        // Try to load from backend first
+        try {
+          console.log('Loading diagram from backend, id:', id);
+          const diagram = await getDiagram(id);
+          if (diagram) {
+            setDatabase(diagram.databaseType);
+            setId(diagram.id);
+            setTitle(diagram.title);
+            setTables(diagram.content.tables || []);
+            setRelationships(diagram.content.relationships || []);
+            setNotes(diagram.content.notes || []);
+            setAreas(diagram.content.areas || []);
+            setTasks(diagram.content.tasks || []);
+            setTransform(diagram.content.transform || { pan: { x: 0, y: 0 }, zoom: 1 });
+            setUndoStack([]);
+            setRedoStack([]);
+            if (databases[diagram.databaseType]?.hasTypes) {
+              setTypes(diagram.content.types || []);
+            }
+            if (databases[diagram.databaseType]?.hasEnums) {
+              setEnums(diagram.content.enums || []);
+            }
+            window.name = `d ${diagram.id}`;
+            console.log('Diagram loaded successfully from backend');
+            return;
+          }
+        } catch (error) {
+          console.log('Backend load failed, falling back to local storage:', error.message);
+        }
+      }
+      
+      // Fallback to local storage
       await db.diagrams
         .get(id)
         .then((diagram) => {
@@ -313,22 +515,7 @@ export default function WorkSpace() {
       }
     };
 
-    const shareId = searchParams.get("shareId");
-    if (shareId) {
-      const existingDiagram = await db.diagrams.get({
-        loadedFromGistId: shareId,
-      });
 
-      if (existingDiagram) {
-        window.name = "d " + existingDiagram.id;
-        setId(existingDiagram.id);
-      } else {
-        window.name = "";
-        setId(0);
-      }
-      await loadFromGist(shareId);
-      return;
-    }
 
     if (window.name === "") {
       await loadLatestDiagram();
@@ -366,6 +553,8 @@ export default function WorkSpace() {
     selectedDb,
     setSaveState,
     searchParams,
+    useBackendStorage,
+    backendAvailable,
   ]);
 
   useEffect(() => {
@@ -417,6 +606,8 @@ export default function WorkSpace() {
           setTitle={setTitle}
           lastSaved={lastSaved}
           setLastSaved={setLastSaved}
+          useBackendStorage={useBackendStorage}
+          backendAvailable={backendAvailable}
         />
       </IdContext.Provider>
       <div

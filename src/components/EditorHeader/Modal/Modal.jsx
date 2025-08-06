@@ -39,6 +39,7 @@ import { useTranslation } from "react-i18next";
 import { importSQL } from "../../../utils/importSQL";
 import { databases } from "../../../data/databases";
 import { isRtl } from "../../../i18n/utils/rtl";
+import { getDiagram } from "../../../api/diagrams";
 
 const extensionToLanguage = {
   md: "markdown",
@@ -99,6 +100,37 @@ export default function Modal({
   };
 
   const loadDiagram = async (id) => {
+    // Try to load from backend first if backend storage is enabled
+    try {
+      console.log('Modal: Loading diagram from backend, id:', id);
+      const diagram = await getDiagram(id);
+      if (diagram) {
+        setDatabase(diagram.databaseType);
+        setDiagramId(diagram.id);
+        setTitle(diagram.title);
+        setTables(diagram.content.tables || []);
+        setRelationships(diagram.content.relationships || []);
+        setAreas(diagram.content.areas || []);
+        setNotes(diagram.content.notes || []);
+        setTasks(diagram.content.tasks || []);
+        setTransform(diagram.content.transform || { pan: { x: 0, y: 0 }, zoom: 1 });
+        setUndoStack([]);
+        setRedoStack([]);
+        if (databases[diagram.databaseType]?.hasTypes) {
+          setTypes(diagram.content.types || []);
+        }
+        if (databases[diagram.databaseType]?.hasEnums) {
+          setEnums(diagram.content.enums || []);
+        }
+        window.name = `d ${diagram.id}`;
+        console.log('Modal: Diagram loaded successfully from backend');
+        return;
+      }
+    } catch (error) {
+      console.log('Modal: Backend load failed, trying local storage:', error.message);
+    }
+
+    // Fallback to local storage
     await db.diagrams
       .get(id)
       .then((diagram) => {
