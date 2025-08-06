@@ -42,6 +42,7 @@ export default function WorkSpace() {
   const [width, setWidth] = useState(SIDEPANEL_MIN_WIDTH);
   const [lastSaved, setLastSaved] = useState("");
   const [showSelectDbModal, setShowSelectDbModal] = useState(false);
+  const [isLoadingDiagram, setIsLoadingDiagram] = useState(false);
   const [selectedDb, setSelectedDb] = useState("");
   const { layout } = useLayout();
   const { settings } = useSettings();
@@ -341,6 +342,7 @@ export default function WorkSpace() {
     }
 
     const loadLatestDiagram = async () => {
+      setIsLoadingDiagram(true);
       if (useBackendStorage && backendAvailable) {
         // Try to load from backend first
         try {
@@ -368,15 +370,18 @@ export default function WorkSpace() {
               if (databases[fullDiagram.databaseType]?.hasEnums) {
                 setEnums(fullDiagram.content.enums || []);
               }
-              window.name = `d ${fullDiagram.id}`;
-              return;
-            }
-          } else {
-            console.log('No diagrams found in backend');
-            window.name = "";
-            if (selectedDb === "") setShowSelectDbModal(true);
+                          window.name = `d ${fullDiagram.id}`;
+            setIsLoadingDiagram(false);
             return;
           }
+        } else {
+          console.log('No diagrams found in backend');
+          window.name = "";
+          setIsLoadingDiagram(false);
+          // Only show modal if no database is selected
+          if (selectedDb === "") setShowSelectDbModal(true);
+          return;
+        }
         } catch (error) {
           console.log('Backend load failed, falling back to local storage:', error.message);
         }
@@ -412,8 +417,10 @@ export default function WorkSpace() {
             window.name = `d ${d.id}`;
           } else {
             window.name = "";
-            if (selectedDb === "") setShowSelectDbModal(true);
+            // Only show modal if no database is selected and not loading a diagram
+            if (selectedDb === "" && !isLoadingDiagram) setShowSelectDbModal(true);
           }
+          setIsLoadingDiagram(false);
         })
         .catch((error) => {
           console.log(error);
@@ -421,6 +428,7 @@ export default function WorkSpace() {
     };
 
     const loadDiagram = async (id) => {
+      setIsLoadingDiagram(true);
       if (useBackendStorage && backendAvailable) {
         // Try to load from backend first
         try {
@@ -445,6 +453,7 @@ export default function WorkSpace() {
               setEnums(diagram.content.enums || []);
             }
             window.name = `d ${diagram.id}`;
+            setIsLoadingDiagram(false);
             console.log('Diagram loaded successfully from backend');
             return;
           }
@@ -488,6 +497,7 @@ export default function WorkSpace() {
           } else {
             window.name = "";
           }
+          setIsLoadingDiagram(false);
         })
         .catch((error) => {
           console.log(error);
@@ -524,12 +534,15 @@ export default function WorkSpace() {
               setEnums(diagram.enums ?? []);
             }
           } else {
-            if (selectedDb === "") setShowSelectDbModal(true);
+            // Only show modal if no database is selected and not loading a diagram
+            if (selectedDb === "" && !isLoadingDiagram) setShowSelectDbModal(true);
           }
         })
         .catch((error) => {
           console.log(error);
-          if (selectedDb === "") setShowSelectDbModal(true);
+          setIsLoadingDiagram(false);
+          // Only show modal if no database is selected and not loading a diagram
+          if (selectedDb === "" && !isLoadingDiagram) setShowSelectDbModal(true);
         });
     };
 
