@@ -64,27 +64,54 @@ export default function WorkSpace() {
   const { t, i18n } = useTranslation();
   let [searchParams, setSearchParams] = useSearchParams();
 
-  // Check backend availability on component mount
+  // Check backend availability on component mount and periodically
   useEffect(() => {
     const checkBackend = async () => {
       console.log('Checking backend availability...');
       console.log('Current hostname:', window.location.hostname);
       console.log('Current URL:', window.location.href);
-      try {
-        const result = await healthCheck();
-        console.log('Health check result:', result);
+      
+      // Try health check with retries
+      let backendOk = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          console.log(`Health check attempt ${attempt}/3...`);
+          const result = await healthCheck();
+          console.log('Health check result:', result);
+          backendOk = true;
+          break;
+        } catch (error) {
+          console.log(`Health check attempt ${attempt} failed:`, error.message);
+          if (attempt < 3) {
+            // Wait 1 second before retry
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
+      
+      if (backendOk) {
         setBackendAvailable(true);
         setUseBackendStorage(true);
         console.log('✅ Backend is available, using database storage');
-      } catch (error) {
-        console.log('❌ Backend not available, using local storage:', error.message);
-        console.log('Error details:', error);
+      } else {
+        console.log('❌ Backend not available after 3 attempts, using local storage');
         setBackendAvailable(false);
         setUseBackendStorage(false);
       }
     };
+    
     checkBackend();
-  }, []);
+    
+    // Set up periodic health check every 30 seconds if backend is not available
+    const interval = setInterval(() => {
+      if (!backendAvailable) {
+        console.log('Periodic health check...');
+        checkBackend();
+      }
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [backendAvailable]);
   const handleResize = (e) => {
     if (!resize) return;
     const w = isRtl(i18n.language) ? window.innerWidth - e.clientX : e.clientX;

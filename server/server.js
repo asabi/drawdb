@@ -22,13 +22,22 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
+// Rate limiting - more lenient for development
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+  max: 1000, // limit each IP to 1000 requests per windowMs (increased for development)
+  message: 'Too many requests from this IP, please try again later.',
+  skipSuccessfulRequests: true, // Don't count successful requests
+  skipFailedRequests: false // Count failed requests
 });
-app.use('/api/', limiter);
+
+// Apply rate limiting to all API routes except health check
+app.use('/api/', (req, res, next) => {
+  if (req.path === '/health') {
+    return next(); // Skip rate limiting for health check
+  }
+  return limiter(req, res, next);
+});
 
 app.use(express.json({ limit: '10mb' }));
 
