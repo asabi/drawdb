@@ -313,6 +313,7 @@ export default function WorkSpace() {
         const diagram = await getDiagram(diagramId);
         
         setDatabase(diagram.databaseType);
+        setSelectedDb(diagram.databaseType); // Also set selectedDb to prevent modal from showing
         setId(diagram.id);
         setTitle(diagram.title);
         setTables(diagram.content.tables);
@@ -365,6 +366,7 @@ export default function WorkSpace() {
             const fullDiagram = await getDiagram(latestDiagram.id);
             if (fullDiagram) {
               setDatabase(fullDiagram.databaseType);
+              setSelectedDb(fullDiagram.databaseType); // Also set selectedDb to prevent modal from showing
               setId(fullDiagram.id);
               setTitle(fullDiagram.title);
               setTables(fullDiagram.content.tables || []);
@@ -445,6 +447,7 @@ export default function WorkSpace() {
           const diagram = await getDiagram(id);
           if (diagram) {
             setDatabase(diagram.databaseType);
+            setSelectedDb(diagram.databaseType); // Also set selectedDb to prevent modal from showing
             setId(diagram.id);
             setTitle(diagram.title);
             setTables(diagram.content.tables || []);
@@ -478,8 +481,10 @@ export default function WorkSpace() {
           if (diagram) {
             if (diagram.database) {
               setDatabase(diagram.database);
+              setSelectedDb(diagram.database); // Also set selectedDb to prevent modal from showing
             } else {
               setDatabase(DB.GENERIC);
+              setSelectedDb(DB.GENERIC); // Also set selectedDb to prevent modal from showing
             }
             setId(diagram.id);
             setGistId(diagram.gistId);
@@ -520,8 +525,10 @@ export default function WorkSpace() {
           if (diagram) {
             if (diagram.database) {
               setDatabase(diagram.database);
+              setSelectedDb(diagram.database); // Also set selectedDb to prevent modal from showing
             } else {
               setDatabase(DB.GENERIC);
+              setSelectedDb(DB.GENERIC); // Also set selectedDb to prevent modal from showing
             }
             setId(diagram.id);
             setTitle(diagram.title);
@@ -565,6 +572,7 @@ export default function WorkSpace() {
         setRedoStack([]);
         setLoadedFromGistId(shareId);
         setDatabase(d.database);
+        setSelectedDb(d.database); // Also set selectedDb to prevent modal from showing
         setTitle(d.title);
         setTables(d.tables);
         setRelationships(d.relationships);
