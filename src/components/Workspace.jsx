@@ -429,8 +429,8 @@ export default function WorkSpace() {
             window.name = `d ${d.id}`;
           } else {
             window.name = "";
-            // Only show modal if no database is selected and not loading a diagram
-            if (selectedDb === "" && !isLoadingDiagram) {
+            // Only show modal if no database is selected, not loading a diagram, and no diagramId in URL
+            if (selectedDb === "" && !isLoadingDiagram && !searchParams.get('diagramId')) {
               console.log('Showing modal: selectedDb is empty and not loading diagram');
               setShowSelectDbModal(true);
             }
@@ -554,8 +554,8 @@ export default function WorkSpace() {
               setEnums(diagram.enums ?? []);
             }
           } else {
-            // Only show modal if no database is selected and not loading a diagram
-            if (selectedDb === "" && !isLoadingDiagram) {
+            // Only show modal if no database is selected, not loading a diagram, and no diagramId in URL
+            if (selectedDb === "" && !isLoadingDiagram && !searchParams.get('diagramId')) {
               console.log('Showing modal: selectedDb is empty and not loading diagram');
               setShowSelectDbModal(true);
             }
@@ -564,8 +564,8 @@ export default function WorkSpace() {
         .catch((error) => {
           console.log(error);
           setIsLoadingDiagram(false);
-          // Only show modal if no database is selected and not loading a diagram
-          if (selectedDb === "" && !isLoadingDiagram) setShowSelectDbModal(true);
+          // Only show modal if no database is selected, not loading a diagram, and no diagramId in URL
+          if (selectedDb === "" && !isLoadingDiagram && !searchParams.get('diagramId')) setShowSelectDbModal(true);
         });
     };
 
@@ -726,7 +726,7 @@ export default function WorkSpace() {
         hasCancel={false}
         title={t("pick_db")}
         okText={t("confirm")}
-        visible={showSelectDbModal && !isLoadingDiagram}
+        visible={showSelectDbModal && !isLoadingDiagram && !searchParams.get('diagramId')}
         onOk={() => {
           if (selectedDb === "") return;
           setDatabase(selectedDb);
