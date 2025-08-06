@@ -307,6 +307,7 @@ export default function WorkSpace() {
     // Check for diagramId in URL (backend sharing)
     const diagramId = searchParams.get('diagramId');
     if (diagramId && useBackendStorage && backendAvailable) {
+      setIsLoadingDiagram(true);
       try {
         console.log('Loading diagram from backend:', diagramId);
         const diagram = await getDiagram(diagramId);
@@ -327,9 +328,11 @@ export default function WorkSpace() {
           setEnums(diagram.content.enums ?? []);
         }
         window.name = `d ${diagram.id}`;
+        setIsLoadingDiagram(false);
         return;
       } catch (error) {
         console.error('Failed to load diagram from backend:', error);
+        setIsLoadingDiagram(false);
         // Fall back to local storage
       }
     }
@@ -337,7 +340,13 @@ export default function WorkSpace() {
     // Check for shareId in URL (legacy Gist sharing)
     const shareId = searchParams.get('shareId');
     if (shareId) {
-      await loadFromGist(shareId);
+      setIsLoadingDiagram(true);
+      try {
+        await loadFromGist(shareId);
+        setIsLoadingDiagram(false);
+      } catch (error) {
+        setIsLoadingDiagram(false);
+      }
       return;
     }
 
