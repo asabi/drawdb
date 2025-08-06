@@ -68,13 +68,17 @@ export default function WorkSpace() {
   useEffect(() => {
     const checkBackend = async () => {
       console.log('Checking backend availability...');
+      console.log('Current hostname:', window.location.hostname);
+      console.log('Current URL:', window.location.href);
       try {
-        await healthCheck();
+        const result = await healthCheck();
+        console.log('Health check result:', result);
         setBackendAvailable(true);
         setUseBackendStorage(true);
         console.log('✅ Backend is available, using database storage');
       } catch (error) {
         console.log('❌ Backend not available, using local storage:', error.message);
+        console.log('Error details:', error);
         setBackendAvailable(false);
         setUseBackendStorage(false);
       }
