@@ -314,6 +314,7 @@ export default function WorkSpace() {
         
         setDatabase(diagram.databaseType);
         setSelectedDb(diagram.databaseType); // Also set selectedDb to prevent modal from showing
+        console.log('Diagram loaded from diagramId, setting selectedDb to:', diagram.databaseType);
         setId(diagram.id);
         setTitle(diagram.title);
         setTables(diagram.content.tables);
@@ -429,7 +430,10 @@ export default function WorkSpace() {
           } else {
             window.name = "";
             // Only show modal if no database is selected and not loading a diagram
-            if (selectedDb === "" && !isLoadingDiagram) setShowSelectDbModal(true);
+            if (selectedDb === "" && !isLoadingDiagram) {
+              console.log('Showing modal: selectedDb is empty and not loading diagram');
+              setShowSelectDbModal(true);
+            }
           }
           setIsLoadingDiagram(false);
         })
@@ -551,7 +555,10 @@ export default function WorkSpace() {
             }
           } else {
             // Only show modal if no database is selected and not loading a diagram
-            if (selectedDb === "" && !isLoadingDiagram) setShowSelectDbModal(true);
+            if (selectedDb === "" && !isLoadingDiagram) {
+              console.log('Showing modal: selectedDb is empty and not loading diagram');
+              setShowSelectDbModal(true);
+            }
           }
         })
         .catch((error) => {
@@ -719,7 +726,7 @@ export default function WorkSpace() {
         hasCancel={false}
         title={t("pick_db")}
         okText={t("confirm")}
-        visible={showSelectDbModal}
+        visible={showSelectDbModal && !isLoadingDiagram}
         onOk={() => {
           if (selectedDb === "") return;
           setDatabase(selectedDb);
