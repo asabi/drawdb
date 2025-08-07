@@ -40,6 +40,7 @@ export default function SettingsContextProvider({ children }) {
   }, [settings.mode]);
 
   useEffect(() => {
+    console.log('💾 Saving settings to localStorage:', settings);
     localStorage.setItem("settings", JSON.stringify(settings));
   }, [settings]);
 

@@ -149,9 +149,15 @@ export default function WorkSpace() {
                     // Only process if the update is from another client (not from ourselves)
                     if (data.updatedBy && data.updatedBy !== currentSocketId) {
                       console.log('✅ Update is from another user');
+                      console.log('🔧 Auto-update setting value:', settings.autoUpdateOnCollaboration);
+                      console.log('🔧 Auto-update setting type:', typeof settings.autoUpdateOnCollaboration);
+                      console.log('🔧 Full settings object:', settings);
                       
-                      // Check if auto-update is enabled
-                      if (settings.autoUpdateOnCollaboration) {
+                      // Check if auto-update is enabled (explicit boolean check)
+                      const shouldAutoUpdate = settings.autoUpdateOnCollaboration === true;
+                      console.log('🔧 Should auto-update:', shouldAutoUpdate);
+                      
+                      if (shouldAutoUpdate) {
                         console.log('🔄 Auto-update enabled, updating automatically');
                         
                         // Show updating indicator

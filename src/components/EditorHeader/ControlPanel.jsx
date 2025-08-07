@@ -1340,11 +1340,18 @@ export default function ControlPanel({
         ) : (
           <i className="bi bi-toggle-off" />
         ),
-        function: () =>
-          setSettings((prev) => ({
-            ...prev,
-            autoUpdateOnCollaboration: !prev.autoUpdateOnCollaboration,
-          })),
+        function: () => {
+          console.log('🔄 Toggle auto-update clicked');
+          console.log('🔧 Current setting:', settings.autoUpdateOnCollaboration);
+          setSettings((prev) => {
+            const newValue = !prev.autoUpdateOnCollaboration;
+            console.log('🔧 New setting value:', newValue);
+            return {
+              ...prev,
+              autoUpdateOnCollaboration: newValue,
+            };
+          });
+        },
       },
       show_cardinality: {
         state: settings.showCardinality ? (
