@@ -39,9 +39,17 @@ else
     exit 1
 fi
 
+# Get machine IP address
+MACHINE_IP=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
+if [ -z "$MACHINE_IP" ]; then
+    MACHINE_IP="localhost"
+fi
+
+echo "🌐 Machine IP: $MACHINE_IP"
+
 # Start frontend
 echo "🎨 Starting frontend..."
-VITE_BACKEND_URL=http://localhost:3001/api npm run dev &
+npm run dev -- --host 0.0.0.0 &
 FRONTEND_PID=$!
 
 # Wait for frontend to start
@@ -51,6 +59,7 @@ sleep 5
 # Test frontend
 if curl -s http://localhost:5173 > /dev/null; then
     echo "✅ Frontend is running at http://localhost:5173"
+    echo "✅ Frontend is accessible at http://$MACHINE_IP:5173"
 else
     echo "❌ Frontend failed to start"
     kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
@@ -59,8 +68,12 @@ fi
 
 echo ""
 echo "🎉 drawDB with Database Storage is ready!"
-echo "📱 Frontend: http://localhost:5173"
-echo "🔧 Backend: http://localhost:3001"
+echo "📱 Frontend (Local): http://localhost:5173"
+echo "📱 Frontend (Network): http://$MACHINE_IP:5173"
+echo "🔧 Backend (Local): http://localhost:3001"
+echo "🔧 Backend (Network): http://$MACHINE_IP:3001"
+echo ""
+echo "🌐 Access from other machines using: http://$MACHINE_IP:5173"
 echo ""
 echo "To stop the services, run: pkill -f 'node.*server.js' && pkill -f 'vite'"
 
