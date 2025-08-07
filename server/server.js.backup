@@ -4,60 +4,13 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { nanoid } from 'nanoid';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
 import Database from './database.js';
 
 const app = express();
-const server = createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: process.env.NODE_ENV === 'production' 
-      ? ['https://drawdb.com'] 
-      : true, // Allow all origins in development
-    credentials: true
-  }
-});
-
 const PORT = process.env.PORT || 3001;
 
 // Initialize database
 const db = new Database();
-
-// Socket.IO connection handling
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
-
-  // Join a diagram room
-  socket.on('join-diagram', (diagramId) => {
-    socket.join(`diagram-${diagramId}`);
-    console.log(`Client ${socket.id} joined diagram ${diagramId}`);
-  });
-
-  // Leave a diagram room
-  socket.on('leave-diagram', (diagramId) => {
-    socket.leave(`diagram-${diagramId}`);
-    console.log(`Client ${socket.id} left diagram ${diagramId}`);
-  });
-
-  // Handle diagram updates and broadcast to other clients
-  socket.on('diagram-updated', (data) => {
-    const { diagramId, timestamp, ...updateData } = data;
-    console.log(`Diagram ${diagramId} updated by client ${socket.id}`);
-    
-    // Broadcast to all other clients in the same diagram room
-    socket.to(`diagram-${diagramId}`).emit('diagram-updated', {
-      diagramId,
-      timestamp,
-      updatedBy: socket.id,
-      ...updateData
-    });
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-  });
-});
 
 // Middleware
 app.use(helmet());
@@ -143,16 +96,6 @@ app.put('/api/diagrams/:id', async (req, res) => {
     }
 
     const diagram = await db.updateDiagram(id, title, databaseType, content);
-    
-    // Emit real-time update to all clients viewing this diagram
-    io.to(`diagram-${id}`).emit('diagram-updated', {
-      id,
-      title,
-      databaseType,
-      content,
-      updatedAt: diagram.updatedAt
-    });
-    
     res.json(diagram);
   } catch (error) {
     if (error.message === 'Diagram not found') {
@@ -208,11 +151,10 @@ async function startServer() {
   try {
     await db.connect();
     
-    server.listen(PORT, '0.0.0.0', () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Health check: http://localhost:${PORT}/api/health`);
       console.log(`Network access: http://0.0.0.0:${PORT}/api/health`);
-      console.log(`WebSocket server: ws://0.0.0.0:${PORT}`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);

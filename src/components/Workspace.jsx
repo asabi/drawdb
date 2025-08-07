@@ -26,6 +26,7 @@ import { isRtl } from "../i18n/utils/rtl";
 import { useSearchParams } from "react-router-dom";
 import { get } from "../api/gists";
 import { createDiagram, updateDiagram, getDiagram, getRecentDiagrams, healthCheck } from "../api/diagrams";
+import { socketService } from "../api/socket";
 
 export const IdContext = createContext({ gistId: "", setGistId: () => {} });
 
@@ -128,6 +129,40 @@ export default function WorkSpace() {
       }, 100); // Small delay to ensure everything is loaded
     }
   }, [searchParams, setSearchParams]);
+
+  // Socket.IO real-time collaboration setup
+  useEffect(() => {
+    // Connect to Socket.IO when backend is available
+    if (backendAvailable && useBackendStorage) {
+      console.log('Setting up Socket.IO for real-time collaboration...');
+      socketService.connect();
+      
+      // Set up diagram update listener
+      socketService.onDiagramUpdate((data) => {
+        console.log('Received real-time update for diagram:', data.diagramId);
+        
+        // Show notification to user
+        Modal.info({
+          title: t('diagram_updated'),
+          content: t('diagram_updated_by_another_user'),
+          okText: t('reload'),
+          onOk: () => {
+            // Reload the diagram
+            if (data.diagramId === id || data.diagramId === window.name.split(' ')[1]) {
+              loadDiagram(data.diagramId);
+            }
+          }
+        });
+      });
+
+      // Cleanup on unmount
+      return () => {
+        socketService.offDiagramUpdate();
+        socketService.disconnect();
+      };
+    }
+  }, [backendAvailable, useBackendStorage, id, t]);
+
   const handleResize = (e) => {
     if (!resize) return;
     const w = isRtl(i18n.language) ? window.innerWidth - e.clientX : e.clientX;
@@ -172,6 +207,10 @@ export default function WorkSpace() {
             window.name = `d ${result.id}`;
             setSaveState(State.SAVED);
             setLastSaved(new Date().toLocaleString());
+            
+            // Emit real-time update to other clients
+            socketService.joinDiagram(result.id);
+            socketService.emitDiagramUpdate(result.id, { action: 'created', title });
           } else {
             // Update existing diagram
             console.log('Updating existing diagram with backend, id:', id);
@@ -180,6 +219,10 @@ export default function WorkSpace() {
               console.log('Diagram updated successfully');
               setSaveState(State.SAVED);
               setLastSaved(new Date().toLocaleString());
+              
+              // Emit real-time update to other clients
+              socketService.joinDiagram(id);
+              socketService.emitDiagramUpdate(id, { action: 'updated', title });
             } catch (error) {
               if (error.response?.status === 404) {
                 // Diagram doesn't exist in backend, create it instead
@@ -190,6 +233,10 @@ export default function WorkSpace() {
                 window.name = `d ${result.id}`;
                 setSaveState(State.SAVED);
                 setLastSaved(new Date().toLocaleString());
+                
+                // Emit real-time update to other clients
+                socketService.joinDiagram(result.id);
+                socketService.emitDiagramUpdate(result.id, { action: 'created', title });
               } else {
                 throw error;
               }
@@ -471,6 +518,9 @@ export default function WorkSpace() {
             window.name = `d ${diagram.id}`;
             setIsLoadingDiagram(false);
             console.log('Diagram loaded successfully from backend');
+            
+            // Join Socket.IO room for real-time collaboration
+            socketService.joinDiagram(diagram.id);
             return;
           }
         } catch (error) {
@@ -512,6 +562,9 @@ export default function WorkSpace() {
               setEnums(diagram.enums ?? []);
             }
             window.name = `d ${diagram.id}`;
+            
+            // Join Socket.IO room for real-time collaboration (local storage fallback)
+            socketService.joinDiagram(diagram.id);
           } else {
             window.name = "";
           }
