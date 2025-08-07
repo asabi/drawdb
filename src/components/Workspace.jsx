@@ -139,20 +139,31 @@ export default function WorkSpace() {
       
       // Set up diagram update listener
       socketService.onDiagramUpdate((data) => {
+        const currentSocketId = socketService.getConnectionStatus().socketId;
         console.log('Received real-time update for diagram:', data.diagramId);
+        console.log('Update from client:', data.updatedBy);
+        console.log('Current client socket ID:', currentSocketId);
         
-        // Show notification to user
-        Modal.info({
-          title: t('diagram_updated'),
-          content: t('diagram_updated_by_another_user'),
-          okText: t('reload'),
-          onOk: () => {
-            // Reload the diagram
-            if (data.diagramId === id || data.diagramId === window.name.split(' ')[1]) {
-              loadDiagram(data.diagramId);
+        // Only show notification if the update is from another client (not from ourselves)
+        if (data.updatedBy && data.updatedBy !== currentSocketId) {
+          console.log('✅ Update is from another user, showing notification');
+          
+          // Show notification to user
+          Modal.info({
+            title: t('diagram_updated'),
+            content: t('diagram_updated_by_another_user'),
+            okText: t('reload'),
+            cancelText: t('cancel'),
+            onOk: () => {
+              // Reload the diagram
+              if (data.diagramId === id || data.diagramId === window.name.split(' ')[1]) {
+                loadDiagram(data.diagramId);
+              }
             }
-          }
-        });
+          });
+        } else {
+          console.log('❌ Update is from current user or missing updatedBy, ignoring notification');
+        }
       });
 
       // Cleanup on unmount
@@ -161,7 +172,7 @@ export default function WorkSpace() {
         socketService.disconnect();
       };
     }
-  }, [backendAvailable, useBackendStorage, id, t]);
+  }, [backendAvailable, useBackendStorage]);
 
   const handleResize = (e) => {
     if (!resize) return;

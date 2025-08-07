@@ -45,6 +45,12 @@ io.on('connection', (socket) => {
     const { diagramId, timestamp, ...updateData } = data;
     console.log(`Diagram ${diagramId} updated by client ${socket.id}`);
     
+    // Get all clients in the room
+    const room = io.sockets.adapter.rooms.get(`diagram-${diagramId}`);
+    const clientsInRoom = room ? Array.from(room) : [];
+    console.log(`Clients in room diagram-${diagramId}:`, clientsInRoom);
+    console.log(`Broadcasting to all clients except ${socket.id}`);
+    
     // Broadcast to all other clients in the same diagram room
     socket.to(`diagram-${diagramId}`).emit('diagram-updated', {
       diagramId,

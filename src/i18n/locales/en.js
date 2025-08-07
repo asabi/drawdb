@@ -30,6 +30,7 @@ const en = {
     diagram_updated: "Diagram Updated",
     diagram_updated_by_another_user: "This diagram has been updated by another user. Would you like to reload to see the latest changes?",
     reload: "Reload",
+    cancel: "Cancel",
     import_diagram: "Import diagram",
     import_from_source: "Import from SQL",
     export_as: "Export as",
