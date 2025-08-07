@@ -90,6 +90,7 @@ export default function ControlPanel({
   lastSaved,
   useBackendStorage,
   backendAvailable,
+  isUpdatingFromCollaboration,
 }) {
   const [modal, setModal] = useState(MODAL.NONE);
 
@@ -1333,6 +1334,18 @@ export default function ControlPanel({
         ),
         function: snapToGrid,
       },
+      auto_update_collaboration: {
+        state: settings.autoUpdateOnCollaboration ? (
+          <i className="bi bi-toggle-on" />
+        ) : (
+          <i className="bi bi-toggle-off" />
+        ),
+        function: () =>
+          setSettings((prev) => ({
+            ...prev,
+            autoUpdateOnCollaboration: !prev.autoUpdateOnCollaboration,
+          })),
+      },
       show_cardinality: {
         state: settings.showCardinality ? (
           <i className="bi bi-toggle-on" />
@@ -1890,10 +1903,12 @@ export default function ControlPanel({
                 icon={
                   saveState === State.LOADING || saveState === State.SAVING ? (
                     <Spin size="small" />
+                  ) : isUpdatingFromCollaboration ? (
+                    <Spin size="small" />
                   ) : null
                 }
               >
-                {getState()}
+                {isUpdatingFromCollaboration ? "🔄 Updating from collaboration..." : getState()}
               </Button>
             </div>
           </div>

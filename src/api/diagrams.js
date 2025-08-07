@@ -124,8 +124,15 @@ export const createDiagram = async (title, databaseType, content) => {
 
 // Get a diagram by ID
 export const getDiagram = async (id) => {
-  const response = await api.get(`/diagrams/${id}`);
-  return response.data;
+  try {
+    return await tryBackendUrls(async (api) => {
+      const response = await api.get(`/diagrams/${id}`);
+      return response.data;
+    });
+  } catch (error) {
+    console.error('getDiagram error:', error);
+    throw error;
+  }
 };
 
 // Update a diagram

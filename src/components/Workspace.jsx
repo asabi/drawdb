@@ -45,6 +45,8 @@ export default function WorkSpace() {
   const [showSelectDbModal, setShowSelectDbModal] = useState(false);
   const [isLoadingDiagram, setIsLoadingDiagram] = useState(false);
   const [selectedDb, setSelectedDb] = useState("");
+  const [isReloading, setIsReloading] = useState(false);
+  const [isUpdatingFromCollaboration, setIsUpdatingFromCollaboration] = useState(false);
   const { layout } = useLayout();
   const { settings } = useSettings();
   const { types, setTypes } = useTypes();
@@ -137,34 +139,149 @@ export default function WorkSpace() {
       console.log('Setting up Socket.IO for real-time collaboration...');
       socketService.connect();
       
-      // Set up diagram update listener
-      socketService.onDiagramUpdate((data) => {
-        const currentSocketId = socketService.getConnectionStatus().socketId;
-        console.log('Received real-time update for diagram:', data.diagramId);
-        console.log('Update from client:', data.updatedBy);
-        console.log('Current client socket ID:', currentSocketId);
-        
-        // Only show notification if the update is from another client (not from ourselves)
-        if (data.updatedBy && data.updatedBy !== currentSocketId) {
-          console.log('✅ Update is from another user, showing notification');
-          
-          // Show notification to user
-          Modal.info({
-            title: t('diagram_updated'),
-            content: t('diagram_updated_by_another_user'),
-            okText: t('reload'),
-            cancelText: t('cancel'),
-            onOk: () => {
-              // Reload the diagram
-              if (data.diagramId === id || data.diagramId === window.name.split(' ')[1]) {
-                loadDiagram(data.diagramId);
-              }
-            }
-          });
-        } else {
-          console.log('❌ Update is from current user or missing updatedBy, ignoring notification');
-        }
-      });
+                        // Set up diagram update listener
+                  socketService.onDiagramUpdate((data) => {
+                    const currentSocketId = socketService.getConnectionStatus().socketId;
+                    console.log('Received real-time update for diagram:', data.diagramId);
+                    console.log('Update from client:', data.updatedBy);
+                    console.log('Current client socket ID:', currentSocketId);
+                    
+                    // Only process if the update is from another client (not from ourselves)
+                    if (data.updatedBy && data.updatedBy !== currentSocketId) {
+                      console.log('✅ Update is from another user');
+                      
+                      // Check if auto-update is enabled
+                      if (settings.autoUpdateOnCollaboration) {
+                        console.log('🔄 Auto-update enabled, updating automatically');
+                        
+                        // Show updating indicator
+                        setIsUpdatingFromCollaboration(true);
+                        
+                        // Auto-update the diagram
+                        const updateDiagram = async () => {
+                          try {
+                            // Set reloading flag to prevent Socket.IO emissions
+                            setIsReloading(true);
+                            console.log('🔄 Setting isReloading flag to prevent Socket.IO emissions');
+                            
+                            // Force reload the diagram from backend
+                            console.log('🔄 Auto-updating diagram...');
+                            
+                            if (useBackendStorage && backendAvailable) {
+                              console.log('🔄 Loading from backend...');
+                              const diagram = await getDiagram(data.diagramId);
+                              if (diagram) {
+                                console.log('✅ Diagram auto-updated from backend:', diagram.id);
+                                setDatabase(diagram.databaseType);
+                                setSelectedDb(diagram.databaseType);
+                                setId(diagram.id);
+                                setTitle(diagram.title);
+                                setTables(diagram.content.tables || []);
+                                setRelationships(diagram.content.relationships || []);
+                                setNotes(diagram.content.notes || []);
+                                setAreas(diagram.content.areas || []);
+                                setTasks(diagram.content.tasks || []);
+                                setTransform(diagram.content.transform || { pan: { x: 0, y: 0 }, zoom: 1 });
+                                setUndoStack([]);
+                                setRedoStack([]);
+                                if (databases[diagram.databaseType]?.hasTypes) {
+                                  setTypes(diagram.content.types || []);
+                                }
+                                if (databases[diagram.databaseType]?.hasEnums) {
+                                  setEnums(diagram.content.enums || []);
+                                }
+                                window.name = `d ${diagram.id}`;
+                                console.log('✅ Diagram auto-updated successfully');
+                              }
+                            } else {
+                              console.log('❌ Backend not available, cannot auto-update');
+                            }
+                          } catch (error) {
+                            console.error('❌ Error auto-updating diagram:', error);
+                          } finally {
+                            // Clear reloading flag after a short delay to allow state updates to complete
+                            setTimeout(() => {
+                              setIsReloading(false);
+                              console.log('🔄 Cleared isReloading flag');
+                            }, 1000);
+                            
+                            // Hide updating indicator after a brief delay
+                            setTimeout(() => {
+                              setIsUpdatingFromCollaboration(false);
+                            }, 2000);
+                          }
+                        };
+                        
+                        updateDiagram();
+                      } else {
+                        console.log('📋 Auto-update disabled, showing notification');
+                        
+                        // Show notification to user (manual update)
+                        Modal.info({
+                          title: t('diagram_updated'),
+                          content: t('diagram_updated_by_another_user'),
+                          okText: t('reload'),
+                          cancelText: t('cancel'),
+                          onOk: async () => {
+                            // Reload the diagram
+                            console.log('🔄 Reload button clicked');
+                            console.log('📋 Update diagram ID:', data.diagramId);
+                            console.log('📋 Current diagram ID:', id);
+                            console.log('📋 Window name:', window.name);
+                            
+                            try {
+                              // Set reloading flag to prevent Socket.IO emissions
+                              setIsReloading(true);
+                              console.log('🔄 Setting isReloading flag to prevent Socket.IO emissions');
+                              
+                              // Force reload the diagram from backend
+                              console.log('🔄 Attempting to reload diagram...');
+                              
+                              if (useBackendStorage && backendAvailable) {
+                                console.log('🔄 Loading from backend...');
+                                const diagram = await getDiagram(data.diagramId);
+                                if (diagram) {
+                                  console.log('✅ Diagram loaded from backend:', diagram.id);
+                                  setDatabase(diagram.databaseType);
+                                  setSelectedDb(diagram.databaseType);
+                                  setId(diagram.id);
+                                  setTitle(diagram.title);
+                                  setTables(diagram.content.tables || []);
+                                  setRelationships(diagram.content.relationships || []);
+                                  setNotes(diagram.content.notes || []);
+                                  setAreas(diagram.content.areas || []);
+                                  setTasks(diagram.content.tasks || []);
+                                  setTransform(diagram.content.transform || { pan: { x: 0, y: 0 }, zoom: 1 });
+                                  setUndoStack([]);
+                                  setRedoStack([]);
+                                  if (databases[diagram.databaseType]?.hasTypes) {
+                                    setTypes(diagram.content.types || []);
+                                  }
+                                  if (databases[diagram.databaseType]?.hasEnums) {
+                                    setEnums(diagram.content.enums || []);
+                                  }
+                                  window.name = `d ${diagram.id}`;
+                                  console.log('✅ Diagram reloaded successfully');
+                                }
+                              } else {
+                                console.log('❌ Backend not available, cannot reload');
+                              }
+                            } catch (error) {
+                              console.error('❌ Error reloading diagram:', error);
+                            } finally {
+                              // Clear reloading flag after a short delay to allow state updates to complete
+                              setTimeout(() => {
+                                setIsReloading(false);
+                                console.log('🔄 Cleared isReloading flag');
+                              }, 1000);
+                            }
+                          }
+                        });
+                      }
+                    } else {
+                      console.log('❌ Update is from current user or missing updatedBy, ignoring notification');
+                    }
+                  });
 
       // Cleanup on unmount
       return () => {
@@ -219,9 +336,13 @@ export default function WorkSpace() {
             setSaveState(State.SAVED);
             setLastSaved(new Date().toLocaleString());
             
-            // Emit real-time update to other clients
-            socketService.joinDiagram(result.id);
-            socketService.emitDiagramUpdate(result.id, { action: 'created', title });
+            // Emit real-time update to other clients (only if not reloading)
+            if (!isReloading) {
+              socketService.joinDiagram(result.id);
+              socketService.emitDiagramUpdate(result.id, { action: 'created', title });
+            } else {
+              console.log('🔄 Skipping Socket.IO emission during reload');
+            }
           } else {
             // Update existing diagram
             console.log('Updating existing diagram with backend, id:', id);
@@ -231,9 +352,13 @@ export default function WorkSpace() {
               setSaveState(State.SAVED);
               setLastSaved(new Date().toLocaleString());
               
-              // Emit real-time update to other clients
-              socketService.joinDiagram(id);
-              socketService.emitDiagramUpdate(id, { action: 'updated', title });
+              // Emit real-time update to other clients (only if not reloading)
+              if (!isReloading) {
+                socketService.joinDiagram(id);
+                socketService.emitDiagramUpdate(id, { action: 'updated', title });
+              } else {
+                console.log('🔄 Skipping Socket.IO emission during reload');
+              }
             } catch (error) {
               if (error.response?.status === 404) {
                 // Diagram doesn't exist in backend, create it instead
@@ -245,9 +370,13 @@ export default function WorkSpace() {
                 setSaveState(State.SAVED);
                 setLastSaved(new Date().toLocaleString());
                 
-                // Emit real-time update to other clients
-                socketService.joinDiagram(result.id);
-                socketService.emitDiagramUpdate(result.id, { action: 'created', title });
+                // Emit real-time update to other clients (only if not reloading)
+                if (!isReloading) {
+                  socketService.joinDiagram(result.id);
+                  socketService.emitDiagramUpdate(result.id, { action: 'created', title });
+                } else {
+                  console.log('🔄 Skipping Socket.IO emission during reload');
+                }
               } else {
                 throw error;
               }
@@ -501,6 +630,7 @@ export default function WorkSpace() {
     };
 
     const loadDiagram = async (id) => {
+      console.log('🔄 loadDiagram called with id:', id);
       setIsLoadingDiagram(true);
       if (useBackendStorage && backendAvailable) {
         // Try to load from backend first
@@ -528,7 +658,13 @@ export default function WorkSpace() {
             }
             window.name = `d ${diagram.id}`;
             setIsLoadingDiagram(false);
-            console.log('Diagram loaded successfully from backend');
+            console.log('✅ Diagram loaded successfully from backend');
+            console.log('📊 Loaded diagram data:', {
+              id: diagram.id,
+              title: diagram.title,
+              tablesCount: diagram.content.tables?.length || 0,
+              relationshipsCount: diagram.content.relationships?.length || 0
+            });
             
             // Join Socket.IO room for real-time collaboration
             socketService.joinDiagram(diagram.id);
@@ -755,6 +891,7 @@ export default function WorkSpace() {
           setLastSaved={setLastSaved}
           useBackendStorage={useBackendStorage}
           backendAvailable={backendAvailable}
+          isUpdatingFromCollaboration={isUpdatingFromCollaboration}
         />
       </IdContext.Provider>
       <div

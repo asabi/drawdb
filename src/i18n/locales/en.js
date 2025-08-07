@@ -59,6 +59,7 @@ const en = {
     reset_view: "Reset view",
     show_grid: "Show grid",
     snap_to_grid: "Snap to grid",
+    auto_update_collaboration: "Auto-update on collaboration",
     show_datatype: "Show datatype",
     show_cardinality: "Show cardinality",
     theme: "Theme",
