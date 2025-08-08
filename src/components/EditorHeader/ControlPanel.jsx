@@ -23,6 +23,7 @@ import {
   Tag,
   Toast,
   Popconfirm,
+  Modal as SemiModal,
 } from "@douyinfe/semi-ui";
 import { toPng, toJpeg, toSvg } from "html-to-image";
 import {
@@ -61,6 +62,7 @@ import {
   useNotes,
   useAreas,
   useEnums,
+  useTasks,
   useFullscreen,
 } from "../../hooks";
 import { enterFullscreen, exitFullscreen } from "../../utils/fullscreen";
@@ -95,18 +97,7 @@ export default function ControlPanel({
 }) {
   const [modal, setModal] = useState(MODAL.NONE);
 
-  // Listen for openFromDatabase event
-  useEffect(() => {
-    const handleOpenFromDatabase = () => {
-      setModal(MODAL.OPEN);
-    };
-
-    window.addEventListener('openFromDatabase', handleOpenFromDatabase);
-    
-    return () => {
-      window.removeEventListener('openFromDatabase', handleOpenFromDatabase);
-    };
-  }, []);
+  // (moved) openFromDatabase listener is defined after data hooks and helpers
   const [sidesheet, setSidesheet] = useState(SIDESHEET.NONE);
   const [showEditName, setShowEditName] = useState(false);
   const [importDb, setImportDb] = useState("");
@@ -138,6 +129,7 @@ export default function ControlPanel({
   const { types, addType, deleteType, updateType, setTypes } = useTypes();
   const { notes, setNotes, updateNote, addNote, deleteNote } = useNotes();
   const { areas, setAreas, updateArea, addArea, deleteArea } = useAreas();
+  const { tasks } = useTasks();
   const { undoStack, redoStack, setUndoStack, setRedoStack } = useUndoRedo();
   const { selectedElement, setSelectedElement } = useSelect();
   const { transform, setTransform } = useTransform();
@@ -739,14 +731,56 @@ export default function ControlPanel({
     setLayout((prev) => ({ ...prev, dbmlEditor: !prev.dbmlEditor }));
   };
   const save = () => setSaveState(State.SAVING);
-  const open = () => setModal(MODAL.OPEN);
+  const hasContent = () =>
+    (tables?.length ?? 0) > 0 ||
+    (areas?.length ?? 0) > 0 ||
+    (notes?.length ?? 0) > 0 ||
+    (types?.length ?? 0) > 0 ||
+    (relationships?.length ?? 0) > 0 ||
+    (tasks?.length ?? 0) > 0;
+
+  const confirmUnsavedThen = (proceed) => {
+    if (!isPersisted && hasContent()) {
+      setPendingAction(() => proceed);
+      setUnsavedVisible(true);
+      return;
+    }
+    proceed();
+  };
+
+  const open = () => confirmUnsavedThen(() => setModal(MODAL.OPEN));
   const saveDiagramAs = () => setModal(MODAL.SAVEAS);
   const fullscreen = useFullscreen();
+
+  // Unsaved changes 3-button prompt (Save / Discard / Cancel)
+  const [unsavedVisible, setUnsavedVisible] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+  const [waitingToProceed, setWaitingToProceed] = useState(false);
+
+  useEffect(() => {
+    if (waitingToProceed && saveState === State.SAVED) {
+      setWaitingToProceed(false);
+      setUnsavedVisible(false);
+      const next = pendingAction;
+      setPendingAction(null);
+      if (typeof next === 'function') next();
+    }
+  }, [waitingToProceed, saveState, pendingAction]);
+
+  // Listen for openFromDatabase event after hooks and helpers are initialized
+  useEffect(() => {
+    const handleOpenFromDatabase = () => {
+      confirmUnsavedThen(() => setModal(MODAL.OPEN));
+    };
+
+    window.addEventListener('openFromDatabase', handleOpenFromDatabase);
+    return () => window.removeEventListener('openFromDatabase', handleOpenFromDatabase);
+  }, [confirmUnsavedThen]);
 
   const menu = {
     file: {
       new: {
-        function: () => setModal(MODAL.NEW),
+        function: () => confirmUnsavedThen(() => setModal(MODAL.NEW)),
       },
       new_window: {
         function: () => {
@@ -1162,8 +1196,14 @@ export default function ControlPanel({
       },
       exit: {
         function: () => {
-          save();
-          if (saveState === State.SAVED) navigate("/");
+          const hasContent =
+            (tables?.length ?? 0) > 0 ||
+            (areas?.length ?? 0) > 0 ||
+            (notes?.length ?? 0) > 0 ||
+            (types?.length ?? 0) > 0 ||
+            (relationships?.length ?? 0) > 0 ||
+            (tasks?.length ?? 0) > 0;
+          confirmUnsavedThen(() => navigate('/'));
         },
       },
     },
@@ -1545,6 +1585,23 @@ export default function ControlPanel({
         importFrom={importFrom}
         importDb={importDb}
       />
+      {unsavedVisible && (
+        <SemiModal
+          title={t('unsaved_changes')}
+          visible={unsavedVisible}
+          onCancel={() => { setUnsavedVisible(false); setPendingAction(null); }}
+          footer={null}
+        >
+          <div className="px-5 pt-2 pb-3">
+            <div className="mb-5 text-sm">{t('unsaved_changes_open_warning')}</div>
+            <div className="flex gap-2 justify-end mt-3">
+              <Button onClick={() => { setUnsavedVisible(false); setPendingAction(null); }}>{t('cancel')}</Button>
+              <Button onClick={() => { setUnsavedVisible(false); const next = pendingAction; setPendingAction(null); if (typeof next === 'function') next(); }} theme="solid">{t('continue')}</Button>
+              <Button type="primary" onClick={() => { setWaitingToProceed(true); setSaveState(State.SAVING); }}>{t('save')}</Button>
+            </div>
+          </div>
+        </SemiModal>
+      )}
       <Sidesheet
         type={sidesheet}
         onClose={() => setSidesheet(SIDESHEET.NONE)}

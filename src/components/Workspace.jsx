@@ -876,6 +876,9 @@ export default function WorkSpace() {
     )
       return;
 
+    // Only autosave if the diagram has been persisted at least once
+    if (!isPersisted) return;
+
     if (settings.autosave) {
       setSaveState(State.SAVING);
     }
@@ -894,6 +897,7 @@ export default function WorkSpace() {
     transform.pan?.y,
     title,
     gistId,
+    isPersisted,
     setSaveState,
   ]);
 
