@@ -250,6 +250,7 @@ const en = {
     didnt_find_diagram: "Oops! Didn't find the diagram.",
     unsigned: "Unsigned",
     share: "Share",
+    please_save_before_share: "Please save the diagram before sharing",
     unshare: "Unshare",
     copy_link: "Copy link",
     readme: "README",

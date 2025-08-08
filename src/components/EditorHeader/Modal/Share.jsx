@@ -105,21 +105,34 @@ export default function Share({ title, setModal, diagramId, setDiagramId }) {
     updateOrGenerateLink();
   }, [diagramId, title, database, diagramContent, setDiagramId, generateShareUrl]);
 
-  const copyLink = () => {
+  const copyLink = async () => {
     const urlToCopy = shareUrl || (gistId ? window.location.origin + window.location.pathname + "?shareId=" + gistId : "");
     if (!urlToCopy) {
       Toast.error(t("no_share_link_available"));
       return;
     }
-    
-    navigator.clipboard
-      .writeText(urlToCopy)
-      .then(() => {
-        Toast.success(t("copied_to_clipboard"));
-      })
-      .catch(() => {
-        Toast.error(t("oops_smth_went_wrong"));
-      });
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(urlToCopy);
+      } else {
+        // Fallback for insecure contexts (e.g., LAN IP) where Clipboard API is unavailable
+        const textarea = document.createElement('textarea');
+        textarea.value = urlToCopy;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (!success) throw new Error('execCommand copy failed');
+      }
+      Toast.success(t("copied_to_clipboard"));
+    } catch (e) {
+      console.error('Copy failed:', e);
+      Toast.error(t("oops_smth_went_wrong"));
+    }
   };
 
   if (loading)

@@ -47,6 +47,7 @@ export default function WorkSpace() {
   const [selectedDb, setSelectedDb] = useState("");
   const [isReloading, setIsReloading] = useState(false);
   const [isUpdatingFromCollaboration, setIsUpdatingFromCollaboration] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const { layout } = useLayout();
   const { settings } = useSettings();
   const { types, setTypes } = useTypes();
@@ -67,6 +68,12 @@ export default function WorkSpace() {
   const { undoStack, redoStack, setUndoStack, setRedoStack } = useUndoRedo();
   const { t, i18n } = useTranslation();
   let [searchParams, setSearchParams] = useSearchParams();
+
+  // Determine if the current diagram has been persisted at least once
+  const isPersisted = (() => {
+    const hasId = (typeof id === 'string' && id.length > 0) || (typeof id === 'number' && id > 0);
+    return hasId;
+  })();
 
   // Check backend availability on component mount and periodically
   useEffect(() => {
@@ -332,7 +339,12 @@ export default function WorkSpace() {
             ...(databases[database].hasTypes && { types: types }),
           };
 
-          if ((id === 0 && window.name === "") || op === "lt") {
+          const isTemplateSave = op === 'lt';
+          const hasNoDiagramId = id === 0 || id === '' || id === null || typeof id === 'undefined';
+          const isNewDiagram = hasNoDiagramId && window.name === '';
+          console.log('Save path decision:', { isTemplateSave, hasNoDiagramId, isNewDiagram, id, windowName: window.name });
+
+          if (isTemplateSave || isNewDiagram) {
             // Create new diagram
             console.log('Creating new diagram with backend');
             const result = await createDiagram(title, database, diagramContent);
@@ -505,6 +517,8 @@ export default function WorkSpace() {
         console.log('Loading diagram from backend:', diagramId);
         const diagram = await getDiagram(diagramId);
         
+        // Assign window.name BEFORE setting state to avoid autosave creating a new diagram
+        window.name = `d ${diagram.id}`;
         setDatabase(diagram.databaseType);
         setSelectedDb(diagram.databaseType); // Also set selectedDb to prevent modal from showing
         console.log('Diagram loaded from diagramId, setting selectedDb to:', diagram.databaseType);
@@ -522,8 +536,8 @@ export default function WorkSpace() {
         if (databases[diagram.databaseType].hasEnums) {
           setEnums(diagram.content.enums ?? []);
         }
-        window.name = `d ${diagram.id}`;
         setIsLoadingDiagram(false);
+        setTimeout(() => setIsInitialLoad(false), 500);
         return;
       } catch (error) {
         console.error('Failed to load diagram from backend:', error);
@@ -559,6 +573,7 @@ export default function WorkSpace() {
             // Load the full diagram data
             const fullDiagram = await getDiagram(latestDiagram.id);
             if (fullDiagram) {
+              window.name = `d ${fullDiagram.id}`;
               setDatabase(fullDiagram.databaseType);
               setSelectedDb(fullDiagram.databaseType); // Also set selectedDb to prevent modal from showing
               setId(fullDiagram.id);
@@ -575,8 +590,8 @@ export default function WorkSpace() {
               if (databases[fullDiagram.databaseType]?.hasEnums) {
                 setEnums(fullDiagram.content.enums || []);
               }
-                          window.name = `d ${fullDiagram.id}`;
             setIsLoadingDiagram(false);
+              setTimeout(() => setIsInitialLoad(false), 500);
             return;
           }
         } else {
@@ -629,6 +644,7 @@ export default function WorkSpace() {
             }
           }
           setIsLoadingDiagram(false);
+          setTimeout(() => setIsInitialLoad(false), 500);
         })
         .catch((error) => {
           console.log(error);
@@ -644,6 +660,8 @@ export default function WorkSpace() {
           console.log('Loading diagram from backend, id:', id);
           const diagram = await getDiagram(id);
           if (diagram) {
+            // Assign window.name BEFORE setting state to avoid autosave creating a new diagram
+            window.name = `d ${diagram.id}`;
             setDatabase(diagram.databaseType);
             setSelectedDb(diagram.databaseType); // Also set selectedDb to prevent modal from showing
             setId(diagram.id);
@@ -662,8 +680,8 @@ export default function WorkSpace() {
             if (databases[diagram.databaseType]?.hasEnums) {
               setEnums(diagram.content.enums || []);
             }
-            window.name = `d ${diagram.id}`;
             setIsLoadingDiagram(false);
+            setTimeout(() => setIsInitialLoad(false), 500);
             console.log('✅ Diagram loaded successfully from backend');
             console.log('📊 Loaded diagram data:', {
               id: diagram.id,
@@ -722,6 +740,7 @@ export default function WorkSpace() {
             window.name = "";
           }
           setIsLoadingDiagram(false);
+          setTimeout(() => setIsInitialLoad(false), 500);
         })
         .catch((error) => {
           console.log(error);
@@ -847,12 +866,15 @@ export default function WorkSpace() {
   ]);
 
   useEffect(() => {
+    // Only autosave after the diagram has a persisted backend/local id
     if (
-      tables?.length === 0 &&
-      areas?.length === 0 &&
-      notes?.length === 0 &&
-      types?.length === 0 &&
-      tasks?.length === 0
+      isInitialLoad ||
+      !isPersisted ||
+      (tables?.length === 0 &&
+        areas?.length === 0 &&
+        notes?.length === 0 &&
+        types?.length === 0 &&
+        tasks?.length === 0)
     )
       return;
 
@@ -873,10 +895,14 @@ export default function WorkSpace() {
     title,
     gistId,
     setSaveState,
+    isInitialLoad,
+    isPersisted,
   ]);
 
   useEffect(() => {
-    save();
+    if (saveState === State.SAVING) {
+      save();
+    }
   }, [saveState, save]);
 
   useEffect(() => {
@@ -898,6 +924,7 @@ export default function WorkSpace() {
           useBackendStorage={useBackendStorage}
           backendAvailable={backendAvailable}
           isUpdatingFromCollaboration={isUpdatingFromCollaboration}
+          isPersisted={isPersisted}
         />
       </IdContext.Provider>
       <div

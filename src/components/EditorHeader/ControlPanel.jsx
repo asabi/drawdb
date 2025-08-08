@@ -91,6 +91,7 @@ export default function ControlPanel({
   useBackendStorage,
   backendAvailable,
   isUpdatingFromCollaboration,
+  isPersisted,
 }) {
   const [modal, setModal] = useState(MODAL.NONE);
 
@@ -1516,15 +1517,17 @@ export default function ControlPanel({
           >
             {header()}
             {window.name.split(" ")[0] !== "t" && (
-              <Button
-                type="primary"
-                className="!text-base me-2 !pe-6 !ps-5 !py-[18px] !rounded-md"
-                size="default"
-                icon={<IconShareStroked />}
-                onClick={() => setModal(MODAL.SHARE)}
-              >
-                {t("share")}
-              </Button>
+              <Tooltip content={!isPersisted ? t('please_save_before_share') : ''} position="bottom">
+                <Button
+                  type="primary"
+                  className={`!text-base me-2 !pe-6 !ps-5 !py-[18px] !rounded-md ${!isPersisted ? 'opacity-60' : ''}`}
+                  size="default"
+                  icon={<IconShareStroked />}
+                  onClick={() => (isPersisted ? setModal(MODAL.SHARE) : Toast.warning({ content: t('please_save_before_share') }))}
+                >
+                  {t("share")}
+                </Button>
+              </Tooltip>
             )}
           </div>
         )}
@@ -1788,6 +1791,9 @@ export default function ControlPanel({
               >
                 {window.name.split(" ")[0] === "t" ? "Templates/" : "Diagrams/"}
                 {title}
+                {!isPersisted && (
+                  <span className="ms-2 text-sm text-red-400 align-middle">(unsaved)</span>
+                )}
               </div>
               {(showEditName || modal === MODAL.RENAME) && <IconEdit />}
             </div>
