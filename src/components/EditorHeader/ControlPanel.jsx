@@ -730,7 +730,15 @@ export default function ControlPanel({
   const toggleDBMLEditor = () => {
     setLayout((prev) => ({ ...prev, dbmlEditor: !prev.dbmlEditor }));
   };
-  const save = () => setSaveState(State.SAVING);
+  const save = () => {
+    const trimmed = (title || '').trim();
+    if (trimmed === '' || trimmed === 'Untitled Diagram') {
+      setModal(MODAL.RENAME);
+      setRequireRenameBeforeSave(true);
+      return;
+    }
+    setSaveState(State.SAVING);
+  };
   const hasContent = () =>
     (tables?.length ?? 0) > 0 ||
     (areas?.length ?? 0) > 0 ||
@@ -756,6 +764,7 @@ export default function ControlPanel({
   const [unsavedVisible, setUnsavedVisible] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
   const [waitingToProceed, setWaitingToProceed] = useState(false);
+  const [requireRenameBeforeSave, setRequireRenameBeforeSave] = useState(false);
 
   useEffect(() => {
     if (waitingToProceed && saveState === State.SAVED) {
@@ -766,6 +775,19 @@ export default function ControlPanel({
       if (typeof next === 'function') next();
     }
   }, [waitingToProceed, saveState, pendingAction]);
+
+  // If we required rename, wait for rename modal to close and title to be valid, then trigger save
+  useEffect(() => {
+    if (!requireRenameBeforeSave) return;
+    if (modal === MODAL.NONE) {
+      const trimmed = (title || '').trim();
+      if (trimmed !== '' && trimmed !== 'Untitled Diagram') {
+        setRequireRenameBeforeSave(false);
+        setWaitingToProceed(true);
+        setSaveState(State.SAVING);
+      }
+    }
+  }, [requireRenameBeforeSave, modal, title, setSaveState]);
 
   // Listen for openFromDatabase event after hooks and helpers are initialized
   useEffect(() => {
@@ -1597,7 +1619,16 @@ export default function ControlPanel({
             <div className="flex gap-2 justify-end mt-3">
               <Button onClick={() => { setUnsavedVisible(false); setPendingAction(null); }}>{t('cancel')}</Button>
               <Button onClick={() => { setUnsavedVisible(false); const next = pendingAction; setPendingAction(null); if (typeof next === 'function') next(); }} theme="solid">{t('continue')}</Button>
-              <Button type="primary" onClick={() => { setWaitingToProceed(true); setSaveState(State.SAVING); }}>{t('save')}</Button>
+              <Button type="primary" onClick={() => {
+                const trimmed = (title || '').trim();
+                if (trimmed === '' || trimmed === 'Untitled Diagram') {
+                  setModal(MODAL.RENAME);
+                  setRequireRenameBeforeSave(true);
+                } else {
+                  setWaitingToProceed(true);
+                  setSaveState(State.SAVING);
+                }
+              }}>{t('save')}</Button>
             </div>
           </div>
         </SemiModal>

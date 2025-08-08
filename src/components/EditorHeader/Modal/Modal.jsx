@@ -415,9 +415,9 @@ export default function Modal({
           (error && error?.type === STATUS.ERROR) ||
           (modal === MODAL.IMPORT &&
             (error.type === STATUS.ERROR || !importData)) ||
-          (modal === MODAL.RENAME && title === "") ||
+          (modal === MODAL.RENAME && (uncontrolledTitle?.trim() === "" || uncontrolledTitle?.trim() === "Untitled Diagram")) ||
           ((modal === MODAL.IMG || modal === MODAL.CODE) && !exportData.data) ||
-          (modal === MODAL.SAVEAS && saveAsTitle === "") ||
+          (modal === MODAL.SAVEAS && saveAsTitle.trim() === "") ||
           (modal === MODAL.IMPORT_SRC && importSource.src === ""),
         hidden: modal === MODAL.SHARE,
       }}
