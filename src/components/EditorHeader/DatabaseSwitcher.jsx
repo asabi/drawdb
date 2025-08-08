@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Dropdown, Button, Tooltip } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { IconChevronDown } from '@douyinfe/semi-icons';
+import apiConfig from '../../api/config';
 
 export default function DatabaseSwitcher({ 
   currentDatabase, 
@@ -38,8 +39,8 @@ export default function DatabaseSwitcher({
       
       // Get both configurations and current status
       const [configsResponse, statusResponse] = await Promise.all([
-        fetch('http://localhost:3001/api/configs'),
-        fetch('http://localhost:3001/api/settings/status')
+        fetch(apiConfig.getUrl('/configs')),
+        fetch(apiConfig.getUrl('/settings/status'))
       ]);
       
       const configs = await configsResponse.json();
@@ -176,7 +177,7 @@ export default function DatabaseSwitcher({
     try {
       console.log('Attempting to connect to database:', database.engine);
       // Connect to the selected database
-      const response = await fetch(`http://localhost:3001/api/configs/${database.engine}/connect`, {
+      const response = await fetch(apiConfig.getUrl(`/configs/${database.engine}/connect`), {
         method: 'POST'
       });
       

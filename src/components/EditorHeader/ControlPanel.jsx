@@ -85,6 +85,7 @@ import { exportSavedData } from "../../utils/exportSavedData";
 import { nanoid } from "nanoid";
 import { getTableHeight } from "../../utils/utils";
 import DatabaseSwitcher from "./DatabaseSwitcher";
+import apiConfig from "../../api/config";
 
 export default function ControlPanel({
   diagramId,
@@ -133,7 +134,7 @@ export default function ControlPanel({
 
   const loadCurrentDatabase = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/settings/status');
+      const response = await fetch(apiConfig.getUrl('/settings/status'));
       const data = await response.json();
       if (data.connected && data.currentConfig) {
         setCurrentDatabase({

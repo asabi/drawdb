@@ -1,7 +1,8 @@
 import axios from 'axios';
+import apiConfig from './config';
 
-// Use direct backend URL for now since proxy isn't working
-const API_BASE_URL = 'http://localhost:3001/api';
+// Use centralized API configuration
+const API_BASE_URL = apiConfig.baseUrl;
 
 // Log the backend URL for debugging
 console.log('Primary Backend URL:', API_BASE_URL);

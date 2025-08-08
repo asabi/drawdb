@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Card } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import apiConfig from '../../../api/config';
 
 export default function DatabaseSettings({ onClose }) {
   const { t } = useTranslation();
@@ -42,7 +43,7 @@ export default function DatabaseSettings({ onClose }) {
   const loadStatus = async () => {
     try {
       setStatusLoading(true);
-      const response = await fetch('http://localhost:3001/api/settings/status');
+      const response = await fetch(apiConfig.getUrl('/settings/status'));
       const data = await response.json();
       setStatus(data);
       
@@ -102,7 +103,7 @@ export default function DatabaseSettings({ onClose }) {
   const handleTestConnection = async () => {
     try {
       setTesting(true);
-      const response = await fetch('http://localhost:3001/api/settings/test', {
+      const response = await fetch(apiConfig.getUrl('/settings/test'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -130,7 +131,7 @@ export default function DatabaseSettings({ onClose }) {
       setLoading(true);
       
       // Save the configuration
-      const saveResponse = await fetch('http://localhost:3001/api/configs', {
+      const saveResponse = await fetch(apiConfig.getUrl('/configs'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -147,7 +148,7 @@ export default function DatabaseSettings({ onClose }) {
       }
 
       // Apply the settings
-      const applyResponse = await fetch('http://localhost:3001/api/settings/apply', {
+      const applyResponse = await fetch(apiConfig.getUrl('/settings/apply'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import apiConfig from './config';
 
 class SocketService {
   constructor() {
@@ -9,21 +10,7 @@ class SocketService {
 
   // Get backend URL dynamically
   getBackendUrl() {
-    // Use environment variable if available (for production)
-    if (import.meta.env.VITE_BACKEND_URL) {
-      return import.meta.env.VITE_BACKEND_URL;
-    }
-    
-    const hostname = window.location.hostname;
-    
-    // If we're in development and using Vite proxy, use localhost:3001
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:3001';
-    }
-    
-    // For production, we'll use the same hostname but different port
-    // This assumes the backend is running on port 3001 on the same server
-    return `http://${hostname}:3001`;
+    return apiConfig.getSocketUrl();
   }
 
   // Connect to Socket.IO server
