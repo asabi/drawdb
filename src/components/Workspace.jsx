@@ -866,15 +866,13 @@ export default function WorkSpace() {
   ]);
 
   useEffect(() => {
-    // Only autosave after the diagram has a persisted backend/local id
+    // Trigger autosave whenever there is content and autosave is enabled
     if (
-      isInitialLoad ||
-      !isPersisted ||
-      (tables?.length === 0 &&
-        areas?.length === 0 &&
-        notes?.length === 0 &&
-        types?.length === 0 &&
-        tasks?.length === 0)
+      tables?.length === 0 &&
+      areas?.length === 0 &&
+      notes?.length === 0 &&
+      types?.length === 0 &&
+      tasks?.length === 0
     )
       return;
 
@@ -892,11 +890,11 @@ export default function WorkSpace() {
     relationships?.length,
     tasks?.length,
     transform.zoom,
+    transform.pan?.x,
+    transform.pan?.y,
     title,
     gistId,
     setSaveState,
-    isInitialLoad,
-    isPersisted,
   ]);
 
   useEffect(() => {
