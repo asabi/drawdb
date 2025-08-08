@@ -84,6 +84,7 @@ import { toDBML } from "../../utils/exportAs/dbml";
 import { exportSavedData } from "../../utils/exportSavedData";
 import { nanoid } from "nanoid";
 import { getTableHeight } from "../../utils/utils";
+import DatabaseSwitcher from "./DatabaseSwitcher";
 
 export default function ControlPanel({
   diagramId,
@@ -108,6 +109,48 @@ export default function ControlPanel({
     extension: "",
   });
   const [importFrom, setImportFrom] = useState(IMPORT_FROM.JSON);
+  const [currentDatabase, setCurrentDatabase] = useState(null);
+
+  // Load current database status
+  useEffect(() => {
+    if (useBackendStorage && backendAvailable) {
+      loadCurrentDatabase();
+    }
+  }, [useBackendStorage, backendAvailable]);
+
+  // Listen for database settings changes
+  useEffect(() => {
+    const handleDatabaseSettingsChanged = () => {
+      loadCurrentDatabase();
+    };
+
+    window.addEventListener('databaseSettingsChanged', handleDatabaseSettingsChanged);
+    
+    return () => {
+      window.removeEventListener('databaseSettingsChanged', handleDatabaseSettingsChanged);
+    };
+  }, []);
+
+  const loadCurrentDatabase = async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/settings/status');
+      const data = await response.json();
+      if (data.connected) {
+        setCurrentDatabase({
+          engine: data.engine,
+          database: data.database
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load current database:', error);
+    }
+  };
+
+  const handleDatabaseChange = (newDatabase) => {
+    setCurrentDatabase(newDatabase);
+    // Here you could implement switching between databases
+    // For now, we'll just update the current database info
+  };
   const { saveState, setSaveState } = useSaveState();
   const { layout, setLayout } = useLayout();
   const { settings, setSettings } = useSettings();
@@ -799,8 +842,17 @@ export default function ControlPanel({
       confirmUnsavedThen(() => setModal(MODAL.OPEN));
     };
 
+    const handleOpenDatabaseSettings = () => {
+      setModal(MODAL.DATABASE_SETTINGS);
+    };
+
     window.addEventListener('openFromDatabase', handleOpenFromDatabase);
-    return () => window.removeEventListener('openFromDatabase', handleOpenFromDatabase);
+    window.addEventListener('openDatabaseSettings', handleOpenDatabaseSettings);
+    
+    return () => {
+      window.removeEventListener('openFromDatabase', handleOpenFromDatabase);
+      window.removeEventListener('openDatabaseSettings', handleOpenDatabaseSettings);
+    };
   }, [confirmUnsavedThen]);
 
   const menu = {
@@ -2007,19 +2059,27 @@ export default function ControlPanel({
                   </Dropdown>
                 ))}
               </div>
-              <Button
-                size="small"
-                type="tertiary"
-                icon={
-                  saveState === State.LOADING || saveState === State.SAVING ? (
-                    <Spin size="small" />
-                  ) : isUpdatingFromCollaboration ? (
-                    <Spin size="small" />
-                  ) : null
-                }
-              >
-                {isUpdatingFromCollaboration ? "🔄 Updating from collaboration..." : getState()}
-              </Button>
+              <div className="flex items-center gap-2">
+                <DatabaseSwitcher
+                  currentDatabase={currentDatabase}
+                  onDatabaseChange={handleDatabaseChange}
+                  useBackendStorage={useBackendStorage}
+                  backendAvailable={backendAvailable}
+                />
+                <Button
+                  size="small"
+                  type="tertiary"
+                  icon={
+                    saveState === State.LOADING || saveState === State.SAVING ? (
+                      <Spin size="small" />
+                    ) : isUpdatingFromCollaboration ? (
+                      <Spin size="small" />
+                    ) : null
+                  }
+                >
+                  {isUpdatingFromCollaboration ? "🔄 Updating from collaboration..." : getState()}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

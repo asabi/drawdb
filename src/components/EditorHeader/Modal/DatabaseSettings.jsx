@@ -25,15 +25,15 @@ export default function DatabaseSettings() {
   const [settings, setSettings] = useState({
     engine: 'sqlite',
     host: 'localhost',
-    port: 3306,
-    user: '',
+    port: '',
+    username: '',
     password: '',
     database: 'drawdb',
-    filePath: 'server/drawdb.sqlite', // Fallback default
+    filePath: 'server/drawdb.sqlite',
     useSSL: false,
     useSSH: false,
     sshHost: '',
-    sshPort: 22,
+    sshPort: '22',
     sshUser: '',
     privateKey: '',
     passphrase: '',
@@ -73,12 +73,28 @@ export default function DatabaseSettings() {
     }
   };
 
-  const handleEngineChange = (value) => {
-    setSettings(prev => ({
-      ...prev,
-      engine: value,
-      port: value === 'mysql' ? 3306 : value === 'postgresql' ? 5432 : 3306
-    }));
+  const handleEngineChange = (engine) => {
+    setSettings({
+      ...settings,
+      engine,
+      // Reset to appropriate defaults for the selected engine
+      host: 'localhost',
+      port: engine === 'mysql' ? '3306' : engine === 'postgresql' ? '5432' : '',
+      username: engine === 'mysql' ? 'root' : engine === 'postgresql' ? 'postgres' : '',
+      password: '',
+      database: 'drawdb',
+      filePath: engine === 'sqlite' ? (status?.defaultSQLitePath || 'server/drawdb.sqlite') : '',
+      useSSL: false,
+      useSSH: false,
+      sshHost: '',
+      sshPort: '22',
+      sshUser: '',
+      privateKey: '',
+      passphrase: '',
+      ca: '',
+      cert: '',
+      key: ''
+    });
   };
 
   const handleTestConnection = async () => {
@@ -136,6 +152,8 @@ export default function DatabaseSettings() {
       if (response.ok) {
         Toast.success(t('settings_saved'));
         await loadStatus();
+        // Notify other components that database settings have changed
+        window.dispatchEvent(new CustomEvent('databaseSettingsChanged'));
       } else {
         Toast.error(`${t('connection_failed')}: ${result.details}`);
       }
@@ -290,58 +308,162 @@ export default function DatabaseSettings() {
     </Card>
   );
 
+  const getCurrentDatabaseStatus = () => {
+    if (status?.connected) {
+      return `${status.engine} - ${status.database || 'Default'}`;
+    }
+    if (status?.engine === 'sqlite') {
+      return 'SQLite (Default)';
+    }
+    return 'Not configured';
+  };
+
+  const getCurrentDatabaseStatusColor = () => {
+    if (status?.connected) {
+      return 'text-green-500';
+    }
+    if (status?.engine === 'sqlite') {
+      return 'text-blue-500';
+    }
+    return 'text-orange-500';
+  };
+
   return (
     <div style={{ maxWidth: 800 }}>
-      {status && (
-        <Card style={{ marginBottom: 16 }}>
-          <Space vertical spacing="tight">
-            <Text strong>{t('current_database')}:</Text>
-            <div>
-              {status.connected ? (
-                <Text type="success">
-                  {status.engine.toUpperCase()} - {status.database || 'Default'}
-                </Text>
-              ) : (
-                <Text type="warning">{t('not_configured')}</Text>
-              )}
-            </div>
-          </Space>
+      <div className="mb-4">
+        <div className="text-sm text-gray-400 mb-2">{t('current_database')}:</div>
+        <div className={`text-sm font-medium ${getCurrentDatabaseStatusColor()}`}>
+          {getCurrentDatabaseStatus()}
+        </div>
+      </div>
+
+      {/* Database Engine Selection */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-300 mb-2">
+          {t('database_engine')}
+        </label>
+        <select
+          value={settings.engine}
+          onChange={(e) => handleEngineChange(e.target.value)}
+          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="sqlite">{t('sqlite')}</option>
+          <option value="mysql">{t('mysql')}</option>
+          <option value="postgresql">{t('postgresql')}</option>
+        </select>
+      </div>
+
+      {/* SQLite Configuration */}
+      {settings.engine === 'sqlite' && (
+        <Card className="mb-4">
+          <div className="text-sm font-medium text-gray-300 mb-3">{t('sqlite')}</div>
+          <div className="mb-3">
+            <label className="block text-sm text-gray-400 mb-2">
+              {t('file_path')}
+            </label>
+            <input
+              type="text"
+              value={settings.filePath}
+              onChange={(e) => setSettings({ ...settings, filePath: e.target.value })}
+              placeholder={t('enter_file_path')}
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={statusLoading}
+            />
+            {statusLoading && (
+              <div className="text-xs text-gray-500 mt-1">{t('loading')}...</div>
+            )}
+            {settings.filePath === status?.defaultSQLitePath && (
+              <div className="text-xs text-green-500 mt-1">{t('default_path')}</div>
+            )}
+          </div>
         </Card>
       )}
 
-      <Space vertical spacing="loose" style={{ width: '100%' }}>
-        <Select
-          label={t('database_engine')}
-          value={settings.engine}
-          onChange={handleEngineChange}
-          style={{ width: '100%' }}
+      {/* MySQL/PostgreSQL Configuration */}
+      {(settings.engine === 'mysql' || settings.engine === 'postgresql') && (
+        <Card className="mb-4">
+          <div className="text-sm font-medium text-gray-300 mb-3">
+            {settings.engine === 'mysql' ? t('mysql') : t('postgresql')}
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Host</label>
+              <input
+                type="text"
+                value={settings.host || ''}
+                onChange={(e) => setSettings({ ...settings, host: e.target.value })}
+                placeholder="localhost"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Port</label>
+              <input
+                type="number"
+                value={settings.port || ''}
+                onChange={(e) => setSettings({ ...settings, port: e.target.value })}
+                placeholder={settings.engine === 'mysql' ? '3306' : '5432'}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Username</label>
+              <input
+                type="text"
+                value={settings.username || ''}
+                onChange={(e) => setSettings({ ...settings, username: e.target.value })}
+                placeholder={settings.engine === 'mysql' ? 'root' : 'postgres'}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Password</label>
+              <input
+                type="password"
+                value={settings.password || ''}
+                onChange={(e) => setSettings({ ...settings, password: e.target.value })}
+                placeholder="Enter password"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm text-gray-400 mb-2">Database</label>
+            <input
+              type="text"
+              value={settings.database || ''}
+              onChange={(e) => setSettings({ ...settings, database: e.target.value })}
+              placeholder="Enter database name"
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </Card>
+      )}
+
+      {/* Action Buttons */}
+      <div className="flex gap-3">
+        <Button
+          type="secondary"
+          loading={testing}
+          onClick={handleTestConnection}
+          disabled={!settings.engine}
         >
-          <Select.Option value="sqlite">{t('sqlite')}</Select.Option>
-          <Select.Option value="mysql">{t('mysql')}</Select.Option>
-          <Select.Option value="postgresql">{t('postgresql')}</Select.Option>
-        </Select>
-
-        {settings.engine === 'sqlite' ? renderSQLiteFields() : renderMySQLPostgresFields()}
-
-        <Space>
-          <Button
-            type="secondary"
-            loading={testing}
-            onClick={handleTestConnection}
-            disabled={!settings.engine}
-          >
-            {t('test_connection')}
-          </Button>
-          <Button
-            type="primary"
-            loading={loading}
-            onClick={handleSaveSettings}
-            disabled={!settings.engine}
-          >
-            {t('save_settings')}
-          </Button>
-        </Space>
-      </Space>
+          {t('test_connection')}
+        </Button>
+        <Button
+          type="primary"
+          loading={loading}
+          onClick={handleSaveSettings}
+          disabled={!settings.engine}
+        >
+          {t('save_settings')}
+        </Button>
+      </div>
     </div>
   );
 } 
