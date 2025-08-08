@@ -59,6 +59,7 @@ export default function Modal({
   setExportData,
   importDb,
   importFrom,
+  renameIntent = 'default',
 }) {
   const { t, i18n } = useTranslation();
   const { setTables, setRelationships, database, setDatabase } = useDiagram();
@@ -384,7 +385,7 @@ export default function Modal({
   return (
     <SemiUIModal
       style={isRtl(i18n.language) ? { direction: "rtl" } : {}}
-      title={getModalTitle(modal)}
+      title={modal === MODAL.RENAME && renameIntent === 'rename_and_save' ? `${t('rename')} & ${t('save')}` : getModalTitle(modal)}
       visible={modal !== MODAL.NONE}
       onOk={getModalOnOk}
       afterClose={() => {
@@ -409,7 +410,7 @@ export default function Modal({
       }}
       centered
       closeOnEsc={true}
-      okText={getOkText(modal)}
+       okText={modal === MODAL.RENAME && renameIntent === 'rename_and_save' ? `${t('rename')} & ${t('save')}` : getOkText(modal)}
       okButtonProps={{
         disabled:
           (error && error?.type === STATUS.ERROR) ||

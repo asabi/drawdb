@@ -785,6 +785,9 @@ export default function ControlPanel({
         setRequireRenameBeforeSave(false);
         setWaitingToProceed(true);
         setSaveState(State.SAVING);
+      } else {
+        // Cancelled or invalid input — clear intent so manual renames are normal
+        setRequireRenameBeforeSave(false);
       }
     }
   }, [requireRenameBeforeSave, modal, title, setSaveState]);
@@ -1606,6 +1609,8 @@ export default function ControlPanel({
         setModal={setModal}
         importFrom={importFrom}
         importDb={importDb}
+        // Signal to Modal when rename is a pre-save step to adjust button label
+        renameIntent={requireRenameBeforeSave ? 'rename_and_save' : 'default'}
       />
       {unsavedVisible && (
         <SemiModal
@@ -1618,7 +1623,7 @@ export default function ControlPanel({
             <div className="mb-5 text-sm">{t('unsaved_changes_open_warning')}</div>
             <div className="flex gap-2 justify-end mt-3">
               <Button onClick={() => { setUnsavedVisible(false); setPendingAction(null); }}>{t('cancel')}</Button>
-              <Button onClick={() => { setUnsavedVisible(false); const next = pendingAction; setPendingAction(null); if (typeof next === 'function') next(); }} theme="solid">{t('continue')}</Button>
+              <Button onClick={() => { setUnsavedVisible(false); setRequireRenameBeforeSave(false); const next = pendingAction; setPendingAction(null); if (typeof next === 'function') next(); }} theme="solid">{t('continue')}</Button>
               <Button type="primary" onClick={() => {
                 const trimmed = (title || '').trim();
                 if (trimmed === '' || trimmed === 'Untitled Diagram') {
