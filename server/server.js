@@ -23,13 +23,13 @@ const io = new Server(server, {
   }
 });
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
-});
+// Rate limiting - DISABLED for internal use
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 100 // limit each IP to 100 requests per windowMs
+// });
 
-app.use(limiter);
+// app.use(limiter);
 
 // Security middleware
 app.use(helmet({
@@ -332,7 +332,9 @@ app.post('/api/configs/:engine/connect', async (req, res) => {
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  console.log('🔌 Client connected:', socket.id);
+  console.log('📍 Client IP:', socket.handshake.address);
+  console.log('🌐 Client headers:', socket.handshake.headers.origin);
 
   socket.on('join-diagram', (diagramId) => {
     socket.join(`diagram-${diagramId}`);
@@ -348,13 +350,16 @@ io.on('connection', (socket) => {
 
   socket.on('diagram-update', (data) => {
     const { diagramId, updates } = data;
-    console.log(`Diagram ${diagramId} updated by client ${socket.id}`);
+    console.log(`📊 Diagram ${diagramId} updated by client ${socket.id}`);
+    console.log(`📊 Update data:`, updates);
     
     // Broadcast to all clients in the room except the sender
     socket.to(`diagram-${diagramId}`).emit('diagram-updated', {
+      diagramId,
       updates,
-      userId: socket.id
+      updatedBy: socket.id
     });
+    console.log(`📤 Broadcasted update to room diagram-${diagramId}`);
   });
 
   socket.on('disconnect', () => {

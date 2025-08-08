@@ -49,7 +49,7 @@ export default function WorkSpace() {
   const [isUpdatingFromCollaboration, setIsUpdatingFromCollaboration] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const { layout } = useLayout();
-  const { settings } = useSettings();
+  const { settings, isLoaded } = useSettings();
   const { types, setTypes } = useTypes();
   const { areas, setAreas } = useAreas();
   const { tasks, setTasks } = useTasks();
@@ -149,20 +149,24 @@ export default function WorkSpace() {
                         // Set up diagram update listener
                   socketService.onDiagramUpdate((data) => {
                     const currentSocketId = socketService.getConnectionStatus().socketId;
-                    console.log('Received real-time update for diagram:', data.diagramId);
-                    console.log('Update from client:', data.updatedBy);
-                    console.log('Current client socket ID:', currentSocketId);
+                    console.log('📡 Received real-time update for diagram:', data.diagramId);
+                    console.log('📡 Update from client:', data.updatedBy);
+                    console.log('📡 Current client socket ID:', currentSocketId);
+                    console.log('📡 Full update data:', data);
                     
                     // Only process if the update is from another client (not from ourselves)
                     if (data.updatedBy && data.updatedBy !== currentSocketId) {
                       console.log('✅ Update is from another user');
                       console.log('🔧 Auto-update setting value:', settings.autoUpdateOnCollaboration);
                       console.log('🔧 Auto-update setting type:', typeof settings.autoUpdateOnCollaboration);
+                      console.log('🔧 Settings loaded:', isLoaded);
                       console.log('🔧 Full settings object:', settings);
                       
                       // Check if auto-update is enabled (explicit boolean check)
-                      const shouldAutoUpdate = settings.autoUpdateOnCollaboration === true;
+                      // Only proceed if settings are loaded
+                      const shouldAutoUpdate = isLoaded && settings.autoUpdateOnCollaboration === true;
                       console.log('🔧 Should auto-update:', shouldAutoUpdate);
+                      console.log('🔧 Settings loaded check:', isLoaded);
                       
                       if (shouldAutoUpdate) {
                         console.log('🔄 Auto-update enabled, updating automatically');

@@ -21,11 +21,13 @@ class SocketService {
     }
 
     const backendUrl = this.getBackendUrl();
-    console.log('Connecting to Socket.IO server:', backendUrl);
+    console.log('🔌 Connecting to Socket.IO server:', backendUrl);
+    console.log('📍 Current location:', window.location.href);
     
     this.socket = io(backendUrl, {
       transports: ['websocket', 'polling'],
       timeout: 20000,
+      forceNew: true,
     });
 
     this.socket.on('connect', () => {
@@ -102,10 +104,9 @@ class SocketService {
     }
 
     console.log('Emitting diagram update for:', diagramId);
-    this.socket.emit('diagram-updated', {
+    this.socket.emit('diagram-update', {
       diagramId,
-      timestamp: new Date().toISOString(),
-      ...updateData
+      updates: updateData
     });
   }
 
