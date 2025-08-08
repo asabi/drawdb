@@ -131,7 +131,7 @@ class ConnectionManager {
         sshTunnel = stream;
       }
 
-      // First, connect without specifying a database
+      // Connect to MySQL without specifying a database
       const mysqlConfig = {
         host: config.useSSH ? '127.0.0.1' : config.host,
         port: config.useSSH ? sshTunnel.localPort : config.port,
@@ -145,13 +145,13 @@ class ConnectionManager {
       };
 
       connection = await mysql.createConnection(mysqlConfig);
-      
-      // Create database if it doesn't exist
-      await connection.execute(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
+
+      // Create database if it doesn't exist (use query, not execute for DDL)
+      await connection.query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
       console.log(`Ensured database exists: ${config.database}`);
       
-      // Use the database
-      await connection.execute(`USE \`${config.database}\``);
+      // Use the database (use query, not execute for DDL)
+      await connection.query(`USE \`${config.database}\``);
       
       // Test the connection
       await connection.ping();
@@ -168,7 +168,7 @@ class ConnectionManager {
         )
       `;
       
-      await connection.execute(createTableSQL);
+      await connection.query(createTableSQL);
       
       return { success: true, message: 'MySQL connection successful' };
     } catch (error) {
@@ -342,8 +342,8 @@ class ConnectionManager {
 
     let connection = await mysql.createConnection(mysqlConfig);
     
-    // Create database if it doesn't exist
-    await connection.execute(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
+    // Create database if it doesn't exist (use query, not execute for DDL)
+    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
     console.log(`Ensured database exists: ${config.database}`);
     
     // Close the initial connection
@@ -365,7 +365,7 @@ class ConnectionManager {
       )
     `;
     
-    await connection.execute(createTableSQL);
+    await connection.query(createTableSQL);
     
     // Store SSH tunnel reference
     if (sshTunnel) {

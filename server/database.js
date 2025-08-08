@@ -555,12 +555,11 @@ class Database {
   }
 
   async getRecentDiagramsMySQL(connection, limit) {
-    const [rows] = await connection.execute(
+    const [rows] = await connection.query(
       `SELECT id, title, database_type, updated_at 
        FROM diagrams 
        ORDER BY updated_at DESC 
-       LIMIT ?`,
-      [limit]
+       LIMIT ${parseInt(limit)}`
     );
     
     return rows.map(row => ({

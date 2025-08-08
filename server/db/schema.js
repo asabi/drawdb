@@ -69,10 +69,10 @@ class SchemaManager {
     
     try {
       // Create database if it doesn't exist
-      await connection.execute(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
+      await connection.query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
       
       // Use the database
-      await connection.execute(`USE \`${config.database}\``);
+      await connection.query(`USE \`${config.database}\``);
       
       // Create tables
       const createTableSQL = `
@@ -86,7 +86,7 @@ class SchemaManager {
         )
       `;
 
-      await connection.execute(createTableSQL);
+      await connection.query(createTableSQL);
       
       return { success: true, message: 'MySQL database and schema ensured' };
     } catch (error) {
