@@ -7,6 +7,13 @@ import { nanoid } from 'nanoid';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import Database from './database.js';
+import connectionManager from './db/connection.js';
+import SchemaManager from './db/schema.js';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const server = createServer(app);
@@ -23,6 +30,7 @@ const PORT = process.env.PORT || 3001;
 
 // Initialize database
 const db = new Database();
+const schemaManager = new SchemaManager(connectionManager);
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
@@ -195,6 +203,79 @@ app.get('/api/diagrams', async (req, res) => {
   } catch (error) {
     console.error('Error getting recent diagrams:', error);
     res.status(500).json({ error: 'Failed to get recent diagrams' });
+  }
+});
+
+// Settings routes
+app.post('/api/settings/test', async (req, res) => {
+  try {
+    const config = req.body;
+    console.log('Test connection request received:', config);
+    
+    if (!config.engine) {
+      return res.status(400).json({ 
+        error: 'Missing required field: engine' 
+      });
+    }
+
+    const result = await connectionManager.testConnection(config);
+    console.log('Test connection result:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('Error testing connection:', error);
+    res.status(500).json({ 
+      error: 'Connection test failed', 
+      details: error.message 
+    });
+  }
+});
+
+app.post('/api/settings/apply', async (req, res) => {
+  try {
+    const config = req.body;
+    
+    if (!config.engine) {
+      return res.status(400).json({ 
+        error: 'Missing required field: engine' 
+      });
+    }
+
+    // Test connection first
+    await connectionManager.testConnection(config);
+    
+    // Establish connection
+    await connectionManager.connect(config);
+    
+    // Ensure database and schema
+    await schemaManager.ensureDatabaseAndSchema();
+    
+    res.json({ 
+      success: true, 
+      message: `Successfully connected to ${config.engine} database` 
+    });
+  } catch (error) {
+    console.error('Error applying settings:', error);
+    res.status(500).json({ 
+      error: 'Failed to apply settings', 
+      details: error.message 
+    });
+  }
+});
+
+app.get('/api/settings/status', async (req, res) => {
+  try {
+    const isConnected = connectionManager.isConnected();
+    const config = connectionManager.getConfig();
+    
+    res.json({
+      connected: isConnected,
+      engine: config?.engine || 'sqlite',
+      database: config?.database || null,
+      defaultSQLitePath: join(__dirname, 'drawdb.sqlite')
+    });
+  } catch (error) {
+    console.error('Error getting settings status:', error);
+    res.status(500).json({ error: 'Failed to get settings status' });
   }
 });
 

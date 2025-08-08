@@ -10,6 +10,7 @@ import {
   IconRedo,
   IconEdit,
   IconShareStroked,
+  IconSetting,
 } from "@douyinfe/semi-icons";
 import { Link, useNavigate } from "react-router-dom";
 import icon from "../../assets/icon_dark_64.png";
@@ -1503,6 +1504,9 @@ export default function ControlPanel({
       },
       language: {
         function: () => setModal(MODAL.LANGUAGE),
+      },
+      database_settings: {
+        function: () => setModal(MODAL.DATABASE_SETTINGS),
       },
       export_saved_data: {
         function: exportSavedData,

@@ -3,28 +3,30 @@ import i18n from "../i18n/i18n";
 
 export const getModalTitle = (modal) => {
   switch (modal) {
-    case MODAL.IMPORT:
-      return i18n.t("import_diagram");
-    case MODAL.IMPORT_SRC:
-      return i18n.t("import_from_source");
-    case MODAL.CODE:
-      return i18n.t("export");
     case MODAL.IMG:
-      return i18n.t("export_image");
+      return "Export as image";
+    case MODAL.CODE:
+      return "Export as code";
+    case MODAL.IMPORT:
+      return "Import diagram";
     case MODAL.RENAME:
-      return i18n.t("rename_diagram");
+      return "Rename diagram";
     case MODAL.OPEN:
-      return i18n.t("open_diagram");
+      return "Open diagram";
     case MODAL.SAVEAS:
-      return i18n.t("save_as");
+      return "Save as";
     case MODAL.NEW:
-      return i18n.t("create_new_diagram");
+      return "New diagram";
+    case MODAL.IMPORT_SRC:
+      return "Import from SQL";
     case MODAL.TABLE_WIDTH:
-      return i18n.t("table_width");
+      return "Set table width";
     case MODAL.LANGUAGE:
-      return i18n.t("language");
+      return "Language";
     case MODAL.SHARE:
-      return i18n.t("share");
+      return "Share";
+    case MODAL.DATABASE_SETTINGS:
+      return "Database Settings";
     default:
       return "";
   }
@@ -32,11 +34,30 @@ export const getModalTitle = (modal) => {
 
 export const getModalWidth = (modal) => {
   switch (modal) {
-    case MODAL.LANGUAGE:
-    case MODAL.OPEN:
+    case MODAL.IMG:
+      return 600;
     case MODAL.CODE:
+      return 800;
+    case MODAL.IMPORT:
+      return 600;
+    case MODAL.RENAME:
+      return 400;
+    case MODAL.OPEN:
+      return 600;
+    case MODAL.SAVEAS:
+      return 400;
     case MODAL.NEW:
-      return 740;
+      return 600;
+    case MODAL.IMPORT_SRC:
+      return 800;
+    case MODAL.TABLE_WIDTH:
+      return 400;
+    case MODAL.LANGUAGE:
+      return 400;
+    case MODAL.SHARE:
+      return 600;
+    case MODAL.DATABASE_SETTINGS:
+      return 900;
     default:
       return 600;
   }
@@ -44,23 +65,31 @@ export const getModalWidth = (modal) => {
 
 export const getOkText = (modal) => {
   switch (modal) {
-    case MODAL.IMPORT:
-    case MODAL.IMPORT_SRC:
-      return i18n.t("import");
-    case MODAL.CODE:
     case MODAL.IMG:
-      return i18n.t("export");
+      return "Export";
+    case MODAL.CODE:
+      return "Export";
+    case MODAL.IMPORT:
+      return "Import";
     case MODAL.RENAME:
-      return i18n.t("rename");
+      return "Rename";
     case MODAL.OPEN:
-      return i18n.t("open");
+      return "Open";
     case MODAL.SAVEAS:
-      return i18n.t("save_as");
+      return "Save";
     case MODAL.NEW:
-      return i18n.t("create");
+      return "Create";
+    case MODAL.IMPORT_SRC:
+      return "Import";
+    case MODAL.TABLE_WIDTH:
+      return "Set";
+    case MODAL.LANGUAGE:
+      return "Set";
     case MODAL.SHARE:
-      return i18n.t("share");
+      return "Share";
+    case MODAL.DATABASE_SETTINGS:
+      return "Save";
     default:
-      return i18n.t("confirm");
+      return "OK";
   }
 };

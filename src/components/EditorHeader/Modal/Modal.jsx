@@ -34,6 +34,7 @@ import ImportSource from "./ImportSource";
 import SetTableWidth from "./SetTableWidth";
 import Language from "./Language";
 import Share from "./Share";
+import DatabaseSettings from "./DatabaseSettings";
 import CodeEditor from "../../CodeEditor";
 import { useTranslation } from "react-i18next";
 import { importSQL } from "../../../utils/importSQL";
@@ -336,6 +337,8 @@ export default function Modal({
             onChange={(v) => setSaveAsTitle(v)}
           />
         );
+      case MODAL.DATABASE_SETTINGS:
+        return <DatabaseSettings />;
       case MODAL.CODE:
       case MODAL.IMG:
         if (exportData.data !== "" || exportData.data) {
