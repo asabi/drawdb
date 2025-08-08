@@ -1,0 +1,381 @@
+import sqlite3 from 'sqlite3';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import crypto from 'crypto';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+class ConfigManager {
+  constructor() {
+    this.db = null;
+    this.configPath = join(__dirname, '..', 'config.sqlite');
+  }
+
+  // Initialize the configuration database
+  async init() {
+    return new Promise((resolve, reject) => {
+      this.db = new sqlite3.Database(this.configPath, (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        // Create the configurations table
+        this.db.run(`
+          CREATE TABLE IF NOT EXISTS database_configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            engine TEXT NOT NULL,
+            name TEXT NOT NULL,
+            host TEXT,
+            port INTEGER,
+            username TEXT,
+            password TEXT,
+            database TEXT,
+            filePath TEXT,
+            useSSL BOOLEAN DEFAULT FALSE,
+            useSSH BOOLEAN DEFAULT FALSE,
+            sshHost TEXT,
+            sshPort INTEGER DEFAULT 22,
+            sshUser TEXT,
+            privateKey TEXT,
+            passphrase TEXT,
+            ca TEXT,
+            cert TEXT,
+            key TEXT,
+            configured BOOLEAN DEFAULT FALSE,
+            is_default BOOLEAN DEFAULT FALSE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `, (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          // Insert default SQLite configuration if it doesn't exist
+          this.ensureDefaultConfig().then(resolve).catch(reject);
+        });
+      });
+    });
+  }
+
+  // Ensure default SQLite configuration exists
+  async ensureDefaultConfig() {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        "SELECT * FROM database_configs WHERE engine = 'sqlite' AND is_default = 1",
+        (err, row) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          if (!row) {
+            // Insert default SQLite configuration
+            const defaultSQLitePath = join(__dirname, '..', 'drawdb.sqlite');
+            this.db.run(`
+              INSERT INTO database_configs (
+                engine, name, filePath, configured, is_default
+              ) VALUES (?, ?, ?, ?, ?)
+            `, ['sqlite', 'SQLite (Default)', defaultSQLitePath, true, true], (err) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve();
+              }
+            });
+          } else {
+            resolve();
+          }
+        }
+      );
+    });
+  }
+
+  // Encrypt sensitive data
+  encrypt(text, key = process.env.ENCRYPTION_KEY || 'default-key-change-in-production') {
+    if (!text) return '';
+    const cipher = crypto.createCipher('aes-256-cbc', key);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return encrypted;
+  }
+
+  // Decrypt sensitive data
+  decrypt(encryptedText, key = process.env.ENCRYPTION_KEY || 'default-key-change-in-production') {
+    if (!encryptedText) return '';
+    try {
+      const decipher = crypto.createDecipher('aes-256-cbc', key);
+      let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      return decrypted;
+    } catch (error) {
+      console.warn('Failed to decrypt value, returning as-is:', error.message);
+      return encryptedText;
+    }
+  }
+
+  // Save a database configuration
+  async saveConfig(config) {
+    return new Promise((resolve, reject) => {
+      const {
+        engine, name, host, port, username, password, database, filePath,
+        useSSL, useSSH, sshHost, sshPort, sshUser, privateKey, passphrase,
+        ca, cert, key, configured = true, is_default = false
+      } = config;
+
+      // Encrypt sensitive fields
+      const encryptedPassword = this.encrypt(password);
+      const encryptedPrivateKey = this.encrypt(privateKey);
+      const encryptedPassphrase = this.encrypt(passphrase);
+      const encryptedCA = this.encrypt(ca);
+      const encryptedCert = this.encrypt(cert);
+      const encryptedKey = this.encrypt(key);
+
+      // Check if configuration already exists
+      this.db.get(
+        "SELECT id FROM database_configs WHERE engine = ? AND name = ?",
+        [engine, name],
+        (err, row) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          if (row) {
+            // Update existing configuration
+            this.db.run(`
+              UPDATE database_configs SET
+                host = ?, port = ?, username = ?, password = ?, database = ?, filePath = ?,
+                useSSL = ?, useSSH = ?, sshHost = ?, sshPort = ?, sshUser = ?, 
+                privateKey = ?, passphrase = ?, ca = ?, cert = ?, key = ?,
+                configured = ?, is_default = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `, [
+              host, port, username, encryptedPassword, database, filePath,
+              useSSL, useSSH, sshHost, sshPort, sshUser,
+              encryptedPrivateKey, encryptedPassphrase, encryptedCA, encryptedCert, encryptedKey,
+              configured, is_default, row.id
+            ], (err) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(row.id);
+              }
+            });
+          } else {
+            // Insert new configuration
+            this.db.run(`
+              INSERT INTO database_configs (
+                engine, name, host, port, username, password, database, filePath,
+                useSSL, useSSH, sshHost, sshPort, sshUser, privateKey, passphrase,
+                ca, cert, key, configured, is_default
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+              engine, name, host, port, username, encryptedPassword, database, filePath,
+              useSSL, useSSH, sshHost, sshPort, sshUser,
+              encryptedPrivateKey, encryptedPassphrase, encryptedCA, encryptedCert, encryptedKey,
+              configured, is_default
+            ], function(err) {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(this.lastID);
+              }
+            });
+          }
+        }
+      );
+    });
+  }
+
+  // Get all database configurations
+  async getAllConfigs() {
+    return new Promise((resolve, reject) => {
+      this.db.all("SELECT * FROM database_configs ORDER BY is_default DESC, name ASC", (err, rows) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        // Decrypt sensitive fields
+        const configs = rows.map(row => ({
+          id: row.id,
+          engine: row.engine,
+          name: row.name,
+          host: row.host,
+          port: row.port,
+          username: row.username,
+          password: this.decrypt(row.password),
+          database: row.database,
+          filePath: row.filePath,
+          useSSL: Boolean(row.useSSL),
+          useSSH: Boolean(row.useSSH),
+          sshHost: row.sshHost,
+          sshPort: row.sshPort,
+          sshUser: row.sshUser,
+          privateKey: this.decrypt(row.privateKey),
+          passphrase: this.decrypt(row.passphrase),
+          ca: this.decrypt(row.ca),
+          cert: this.decrypt(row.cert),
+          key: this.decrypt(row.key),
+          configured: Boolean(row.configured),
+          is_default: Boolean(row.is_default),
+          created_at: row.created_at,
+          updated_at: row.updated_at
+        }));
+
+        resolve(configs);
+      });
+    });
+  }
+
+  // Get configuration by engine
+  async getConfigByEngine(engine) {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        "SELECT * FROM database_configs WHERE engine = ? AND configured = 1",
+        [engine],
+        (err, row) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          if (!row) {
+            resolve(null);
+            return;
+          }
+
+          // Decrypt sensitive fields
+          const config = {
+            id: row.id,
+            engine: row.engine,
+            name: row.name,
+            host: row.host,
+            port: row.port,
+            username: row.username,
+            password: this.decrypt(row.password),
+            database: row.database,
+            filePath: row.filePath,
+            useSSL: Boolean(row.useSSL),
+            useSSH: Boolean(row.useSSH),
+            sshHost: row.sshHost,
+            sshPort: row.sshPort,
+            sshUser: row.sshUser,
+            privateKey: this.decrypt(row.privateKey),
+            passphrase: this.decrypt(row.passphrase),
+            ca: this.decrypt(row.ca),
+            cert: this.decrypt(row.cert),
+            key: this.decrypt(row.key),
+            configured: Boolean(row.configured),
+            is_default: Boolean(row.is_default),
+            created_at: row.created_at,
+            updated_at: row.updated_at
+          };
+
+          resolve(config);
+        }
+      );
+    });
+  }
+
+  // Get default configuration
+  async getDefaultConfig() {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        "SELECT * FROM database_configs WHERE is_default = 1",
+        (err, row) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          if (!row) {
+            resolve(null);
+            return;
+          }
+
+          // Decrypt sensitive fields
+          const config = {
+            id: row.id,
+            engine: row.engine,
+            name: row.name,
+            host: row.host,
+            port: row.port,
+            username: row.username,
+            password: this.decrypt(row.password),
+            database: row.database,
+            filePath: row.filePath,
+            useSSL: Boolean(row.useSSL),
+            useSSH: Boolean(row.useSSH),
+            sshHost: row.sshHost,
+            sshPort: row.sshPort,
+            sshUser: row.sshUser,
+            privateKey: this.decrypt(row.privateKey),
+            passphrase: this.decrypt(row.passphrase),
+            ca: this.decrypt(row.ca),
+            cert: this.decrypt(row.cert),
+            key: this.decrypt(row.key),
+            configured: Boolean(row.configured),
+            is_default: Boolean(row.is_default),
+            created_at: row.created_at,
+            updated_at: row.updated_at
+          };
+
+          resolve(config);
+        }
+      );
+    });
+  }
+
+  // Set default configuration
+  async setDefaultConfig(engine) {
+    return new Promise((resolve, reject) => {
+      // First, unset all defaults
+      this.db.run("UPDATE database_configs SET is_default = 0", (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        // Set the new default
+        this.db.run(
+          "UPDATE database_configs SET is_default = 1 WHERE engine = ?",
+          [engine],
+          (err) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve();
+            }
+          }
+        );
+      });
+    });
+  }
+
+  // Delete configuration
+  async deleteConfig(id) {
+    return new Promise((resolve, reject) => {
+      this.db.run("DELETE FROM database_configs WHERE id = ?", [id], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  // Close the database connection
+  close() {
+    if (this.db) {
+      this.db.close();
+    }
+  }
+}
+
+export default new ConfigManager(); 

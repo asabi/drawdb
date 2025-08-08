@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
+import configManager from './config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -16,6 +17,11 @@ class ConnectionManager {
     this.currentConnection = null;
     this.connectionConfig = null;
     this.sshTunnel = null;
+  }
+
+  // Initialize the connection manager
+  async init() {
+    await configManager.init();
   }
 
   // Encrypt sensitive data
@@ -107,15 +113,29 @@ class ConnectionManager {
       const db = new sqlite3.Database(dbPath, (err) => {
         if (err) {
           reject(new Error(`SQLite connection failed: ${err.message}`));
-        } else {
-          db.close((closeErr) => {
-            if (closeErr) {
-              reject(new Error(`SQLite close failed: ${closeErr.message}`));
-            } else {
-              resolve({ success: true, message: 'SQLite connection successful' });
-            }
-          });
+          return;
         }
+
+        // Create the diagrams table if it doesn't exist
+        db.run(`
+          CREATE TABLE IF NOT EXISTS diagrams (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            database_type TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `, (err) => {
+          if (err) {
+            db.close();
+            reject(new Error(`SQLite table creation failed: ${err.message}`));
+            return;
+          }
+
+          db.close();
+          resolve({ success: true, message: 'SQLite connection successful' });
+        });
       });
     });
   }
@@ -152,11 +172,8 @@ class ConnectionManager {
       
       // Use the database (use query, not execute for DDL)
       await connection.query(`USE \`${config.database}\``);
-      
-      // Test the connection
-      await connection.ping();
-      
-      // Create the diagrams table if it doesn't exist
+
+      // Create the diagrams table if it doesn't exist (use query, not execute for DDL)
       const createTableSQL = `
         CREATE TABLE IF NOT EXISTS diagrams (
           id VARCHAR(255) PRIMARY KEY,
@@ -171,15 +188,9 @@ class ConnectionManager {
       await connection.query(createTableSQL);
       
       return { success: true, message: 'MySQL connection successful' };
-    } catch (error) {
-      throw new Error(`MySQL connection failed: ${error.message}`);
     } finally {
-      if (connection) {
-        await connection.end();
-      }
-      if (sshTunnel) {
-        sshTunnel.end();
-      }
+      if (connection) await connection.end();
+      if (sshTunnel) sshTunnel.close();
     }
   }
 
@@ -210,30 +221,27 @@ class ConnectionManager {
 
       client = new Client(pgConfig);
       await client.connect();
-      
+
       // Check if our target database exists
       const dbExistsResult = await client.query(
         "SELECT 1 FROM pg_database WHERE datname = $1",
         [config.database]
       );
-      
+
       if (dbExistsResult.rows.length === 0) {
         // Database doesn't exist, create it
         await client.query(`CREATE DATABASE "${config.database}"`);
         console.log(`Created database: ${config.database}`);
       }
-      
+
       // Close connection to postgres database
       await client.end();
-      
+
       // Now connect to our target database
       pgConfig.database = config.database;
       client = new Client(pgConfig);
       await client.connect();
-      
-      // Test the connection
-      await client.query('SELECT 1');
-      
+
       // Create the diagrams table if it doesn't exist
       const createTableSQL = `
         CREATE TABLE IF NOT EXISTS diagrams (
@@ -245,54 +253,40 @@ class ConnectionManager {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `;
-      
+
       await client.query(createTableSQL);
       
       return { success: true, message: 'PostgreSQL connection successful' };
-    } catch (error) {
-      throw new Error(`PostgreSQL connection failed: ${error.message}`);
     } finally {
-      if (client) {
-        await client.end();
-      }
-      if (sshTunnel) {
-        sshTunnel.end();
-      }
+      if (client) await client.end();
+      if (sshTunnel) sshTunnel.close();
     }
   }
 
-  // Establish persistent connection
+  // Connect to a database using configuration
   async connect(config) {
     try {
-      // Close existing connection
-      await this.disconnect();
-
-      this.connectionConfig = {
-        ...config,
-        password: this.encrypt(config.password),
-        privateKey: config.privateKey ? this.encrypt(config.privateKey) : null,
-        passphrase: config.passphrase ? this.encrypt(config.passphrase) : null
-      };
+      // Save the configuration
+      await configManager.saveConfig(config);
+      
+      // Set as default if specified
+      if (config.is_default) {
+        await configManager.setDefaultConfig(config.engine);
+      }
 
       switch (config.engine) {
         case 'sqlite':
-          this.currentConnection = await this.connectSQLite(config);
-          break;
+          return await this.connectSQLite(config);
         
         case 'mysql':
-          this.currentConnection = await this.connectMySQL(config);
-          break;
+          return await this.connectMySQL(config);
         
         case 'postgresql':
-          this.currentConnection = await this.connectPostgres(config);
-          break;
+          return await this.connectPostgres(config);
         
         default:
           throw new Error(`Unsupported database engine: ${config.engine}`);
       }
-
-      console.log(`Connected to ${config.engine} database`);
-      return this.currentConnection;
     } catch (error) {
       throw error;
     }
@@ -310,10 +304,32 @@ class ConnectionManager {
       
       const db = new sqlite3.Database(dbPath, (err) => {
         if (err) {
-          reject(err);
-        } else {
-          resolve(db);
+          reject(new Error(`SQLite connection failed: ${err.message}`));
+          return;
         }
+
+        // Create the diagrams table if it doesn't exist
+        db.run(`
+          CREATE TABLE IF NOT EXISTS diagrams (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            database_type TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `, (err) => {
+          if (err) {
+            db.close();
+            reject(new Error(`SQLite table creation failed: ${err.message}`));
+            return;
+          }
+
+          this.currentConnection = db;
+          this.connectionConfig = config;
+          console.log(`Connected to ${config.engine} database`);
+          resolve(db);
+        });
       });
     });
   }
@@ -321,126 +337,138 @@ class ConnectionManager {
   async connectMySQL(config) {
     let sshTunnel = null;
 
-    // Create SSH tunnel if needed
-    if (config.useSSH) {
-      const stream = await this.createSSHTunnel(config);
-      sshTunnel = stream;
+    try {
+      // Create SSH tunnel if needed
+      if (config.useSSH) {
+        const stream = await this.createSSHTunnel(config);
+        sshTunnel = stream;
+      }
+
+      // Connect to MySQL without specifying a database
+      const mysqlConfig = {
+        host: config.useSSH ? '127.0.0.1' : config.host,
+        port: config.useSSH ? sshTunnel.localPort : config.port,
+        user: config.username,
+        password: config.password,
+        ssl: config.useSSL ? {
+          ca: config.ca,
+          cert: config.cert,
+          key: config.key
+        } : false
+      };
+
+      const connection = await mysql.createConnection(mysqlConfig);
+
+      // Create database if it doesn't exist (use query, not execute for DDL)
+      await connection.query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
+      console.log(`Ensured database exists: ${config.database}`);
+      
+      // Use the database (use query, not execute for DDL)
+      await connection.query(`USE \`${config.database}\``);
+
+      // Create the diagrams table if it doesn't exist (use query, not execute for DDL)
+      const createTableSQL = `
+        CREATE TABLE IF NOT EXISTS diagrams (
+          id VARCHAR(255) PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          database_type VARCHAR(50) NOT NULL,
+          content LONGTEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+      `;
+      
+      await connection.query(createTableSQL);
+
+      // Store SSH tunnel reference
+      if (sshTunnel) {
+        connection.sshTunnel = sshTunnel;
+      }
+
+      this.currentConnection = connection;
+      this.connectionConfig = config;
+      console.log(`Connected to ${config.engine} database`);
+      return connection;
+    } catch (error) {
+      if (sshTunnel) sshTunnel.close();
+      throw error;
     }
-
-    // First, connect without specifying a database
-    const mysqlConfig = {
-      host: config.useSSH ? '127.0.0.1' : config.host,
-      port: config.useSSH ? sshTunnel.localPort : config.port,
-      user: config.username,
-      password: config.password,
-      ssl: config.useSSL ? {
-        ca: config.ca,
-        cert: config.cert,
-        key: config.key
-      } : false
-    };
-
-    let connection = await mysql.createConnection(mysqlConfig);
-    
-    // Create database if it doesn't exist (use query, not execute for DDL)
-    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
-    console.log(`Ensured database exists: ${config.database}`);
-    
-    // Close the initial connection
-    await connection.end();
-    
-    // Now connect to our target database
-    mysqlConfig.database = config.database;
-    connection = await mysql.createConnection(mysqlConfig);
-    
-    // Create the diagrams table if it doesn't exist
-    const createTableSQL = `
-      CREATE TABLE IF NOT EXISTS diagrams (
-        id VARCHAR(255) PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        database_type VARCHAR(50) NOT NULL,
-        content LONGTEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `;
-    
-    await connection.query(createTableSQL);
-    
-    // Store SSH tunnel reference
-    if (sshTunnel) {
-      connection.sshTunnel = sshTunnel;
-    }
-
-    return connection;
   }
 
   async connectPostgres(config) {
     let sshTunnel = null;
 
-    // Create SSH tunnel if needed
-    if (config.useSSH) {
-      const stream = await this.createSSHTunnel(config);
-      sshTunnel = stream;
-    }
+    try {
+      // Create SSH tunnel if needed
+      if (config.useSSH) {
+        const stream = await this.createSSHTunnel(config);
+        sshTunnel = stream;
+      }
 
-    // First, connect to the default 'postgres' database to create our target database
-    const pgConfig = {
-      host: config.useSSH ? '127.0.0.1' : config.host,
-      port: config.useSSH ? sshTunnel.localPort : config.port,
-      user: config.username,
-      password: config.password,
-      database: 'postgres', // Connect to default database first
-      ssl: config.useSSL ? {
-        ca: config.ca,
-        cert: config.cert,
-        key: config.key
-      } : false
-    };
+      // First, connect to the default 'postgres' database to create our target database
+      const pgConfig = {
+        host: config.useSSH ? '127.0.0.1' : config.host,
+        port: config.useSSH ? sshTunnel.localPort : config.port,
+        user: config.username,
+        password: config.password,
+        database: 'postgres', // Connect to default database first
+        ssl: config.useSSL ? {
+          ca: config.ca,
+          cert: config.cert,
+          key: config.key
+        } : false
+      };
 
-    let client = new Client(pgConfig);
-    await client.connect();
-    
-    // Check if our target database exists
-    const dbExistsResult = await client.query(
-      "SELECT 1 FROM pg_database WHERE datname = $1",
-      [config.database]
-    );
-    
-    if (dbExistsResult.rows.length === 0) {
-      // Database doesn't exist, create it
-      await client.query(`CREATE DATABASE "${config.database}"`);
-      console.log(`Created database: ${config.database}`);
-    }
-    
-    // Close connection to postgres database
-    await client.end();
-    
-    // Now connect to our target database
-    pgConfig.database = config.database;
-    client = new Client(pgConfig);
-    await client.connect();
-    
-    // Create the diagrams table if it doesn't exist
-    const createTableSQL = `
-      CREATE TABLE IF NOT EXISTS diagrams (
-        id VARCHAR(255) PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        database_type VARCHAR(50) NOT NULL,
-        content TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-    
-    await client.query(createTableSQL);
-    
-    // Store SSH tunnel reference
-    if (sshTunnel) {
-      client.sshTunnel = sshTunnel;
-    }
+      let client = new Client(pgConfig);
+      await client.connect();
 
-    return client;
+      // Check if our target database exists
+      const dbExistsResult = await client.query(
+        "SELECT 1 FROM pg_database WHERE datname = $1",
+        [config.database]
+      );
+
+      if (dbExistsResult.rows.length === 0) {
+        // Database doesn't exist, create it
+        await client.query(`CREATE DATABASE "${config.database}"`);
+        console.log(`Created database: ${config.database}`);
+      }
+
+      // Close connection to postgres database
+      await client.end();
+
+      // Now connect to our target database
+      pgConfig.database = config.database;
+      client = new Client(pgConfig);
+      await client.connect();
+
+      // Create the diagrams table if it doesn't exist
+      const createTableSQL = `
+        CREATE TABLE IF NOT EXISTS diagrams (
+          id VARCHAR(255) PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          database_type VARCHAR(50) NOT NULL,
+          content TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `;
+
+      await client.query(createTableSQL);
+
+      // Store SSH tunnel reference
+      if (sshTunnel) {
+        client.sshTunnel = sshTunnel;
+      }
+
+      this.currentConnection = client;
+      this.connectionConfig = config;
+      console.log(`Connected to ${config.engine} database`);
+      return client;
+    } catch (error) {
+      if (sshTunnel) sshTunnel.close();
+      throw error;
+    }
   }
 
   // Disconnect current connection
@@ -479,6 +507,40 @@ class ConnectionManager {
   // Check if connected
   isConnected() {
     return this.currentConnection !== null;
+  }
+
+  // Get all configurations
+  async getAllConfigs() {
+    return await configManager.getAllConfigs();
+  }
+
+  // Get configuration by engine
+  async getConfigByEngine(engine) {
+    return await configManager.getConfigByEngine(engine);
+  }
+
+  // Get default configuration
+  async getDefaultConfig() {
+    return await configManager.getDefaultConfig();
+  }
+
+  // Save configuration
+  async saveConfig(config) {
+    return await configManager.saveConfig(config);
+  }
+
+  // Delete configuration
+  async deleteConfig(id) {
+    return await configManager.deleteConfig(id);
+  }
+
+  // Connect to default database
+  async connectToDefault() {
+    const defaultConfig = await configManager.getDefaultConfig();
+    if (defaultConfig) {
+      return await this.connect(defaultConfig);
+    }
+    throw new Error('No default database configuration found');
   }
 }
 
