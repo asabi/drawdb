@@ -337,7 +337,7 @@ export default function Modal({
           />
         );
       case MODAL.DATABASE_SETTINGS:
-        return <DatabaseSettings />;
+        return <DatabaseSettings onClose={() => setModal(MODAL.NONE)} />;
       case MODAL.CODE:
       case MODAL.IMG:
         if (exportData.data !== "" || exportData.data) {

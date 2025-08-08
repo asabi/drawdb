@@ -1,39 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Select, 
-  Input, 
-  Button, 
-  Checkbox, 
-  TextArea, 
-  Toast,
-  Spin,
-  Typography,
-  Space,
-  Card
-} from '@douyinfe/semi-ui';
+import { Button, Card } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 
-const { Text } = Typography;
-
-export default function DatabaseSettings() {
+export default function DatabaseSettings({ onClose }) {
   const { t } = useTranslation();
-  const [loading, setLoading] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [status, setStatus] = useState(null);
-  const [statusLoading, setStatusLoading] = useState(true);
-  
   const [settings, setSettings] = useState({
     engine: 'sqlite',
-    host: 'localhost',
+    name: '',
+    host: '',
     port: '',
     username: '',
     password: '',
-    database: 'drawdb',
-    filePath: 'server/drawdb.sqlite',
+    database: '',
+    filePath: '',
     useSSL: false,
     useSSH: false,
     sshHost: '',
-    sshPort: '22',
+    sshPort: 22,
     sshUser: '',
     privateKey: '',
     passphrase: '',
@@ -41,31 +24,42 @@ export default function DatabaseSettings() {
     cert: '',
     key: ''
   });
+  const [loading, setLoading] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(true);
 
   useEffect(() => {
-    // Load current status
     loadStatus();
   }, []);
 
-  // Update settings when status changes
   useEffect(() => {
-    if (status?.defaultSQLitePath) {
-      console.log('Updating filePath from status:', status.defaultSQLitePath);
-      setSettings(prev => ({
-        ...prev,
-        filePath: status.defaultSQLitePath
-      }));
+    if (status?.defaultSQLitePath && settings.engine === 'sqlite') {
+      setSettings(prev => ({ ...prev, filePath: status.defaultSQLitePath }));
     }
-  }, [status]);
+  }, [status?.defaultSQLitePath, settings.engine]);
 
   const loadStatus = async () => {
     try {
-      console.log('Loading database settings status...');
       setStatusLoading(true);
       const response = await fetch('http://localhost:3001/api/settings/status');
       const data = await response.json();
-      console.log('Status data received:', data);
       setStatus(data);
+      
+      // Pre-populate with current configuration if available
+      if (data.currentConfig) {
+        setSettings(prev => ({
+          ...prev,
+          ...data.currentConfig,
+          name: data.currentConfig.name || getDefaultName(data.currentConfig.engine)
+        }));
+      } else if (data.defaultConfig) {
+        setSettings(prev => ({
+          ...prev,
+          ...data.defaultConfig,
+          name: data.defaultConfig.name || getDefaultName(data.defaultConfig.engine)
+        }));
+      }
     } catch (error) {
       console.error('Failed to load status:', error);
     } finally {
@@ -73,73 +67,42 @@ export default function DatabaseSettings() {
     }
   };
 
-  const handleEngineChange = (engine) => {
-    setSettings({
-      ...settings,
-      engine,
-      // Reset to appropriate defaults for the selected engine
-      host: 'localhost',
-      port: engine === 'mysql' ? '3306' : engine === 'postgresql' ? '5432' : '',
-      username: engine === 'mysql' ? 'root' : engine === 'postgresql' ? 'postgres' : '',
-      password: '',
-      database: 'drawdb',
-      filePath: engine === 'sqlite' ? (status?.defaultSQLitePath || 'server/drawdb.sqlite') : '',
-      useSSL: false,
-      useSSH: false,
-      sshHost: '',
-      sshPort: '22',
-      sshUser: '',
-      privateKey: '',
-      passphrase: '',
-      ca: '',
-      cert: '',
-      key: ''
-    });
-  };
-
-  const handleTestConnection = async () => {
-    setTesting(true);
-    try {
-      console.log('Sending test connection request with settings:', settings);
-      const response = await fetch('http://localhost:3001/api/settings/test', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(settings),
-      });
-
-      console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
-      
-      const responseText = await response.text();
-      console.log('Response text:', responseText);
-      
-      let result;
-      try {
-        result = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('Failed to parse JSON response:', parseError);
-        throw new Error(`Invalid JSON response: ${responseText}`);
-      }
-      
-      if (response.ok) {
-        Toast.success(t('connection_successful'));
-      } else {
-        Toast.error(`${t('connection_failed')}: ${result.details || result.error}`);
-      }
-    } catch (error) {
-      console.error('Test connection error:', error);
-      Toast.error(`${t('connection_failed')}: ${error.message}`);
-    } finally {
-      setTesting(false);
+  const getDefaultName = (engine) => {
+    switch (engine) {
+      case 'sqlite':
+        return 'SQLite (Default)';
+      case 'postgresql':
+        return 'PostgreSQL';
+      case 'mysql':
+        return 'MySQL';
+      default:
+        return 'Database';
     }
   };
 
-  const handleSaveSettings = async () => {
-    setLoading(true);
+  const handleEngineChange = (engine) => {
+    const newSettings = {
+      ...settings,
+      engine,
+      name: getDefaultName(engine)
+    };
+
+    // Set default values based on engine
+    if (engine === 'mysql') {
+      newSettings.port = '3306';
+      newSettings.username = 'root';
+    } else if (engine === 'postgresql') {
+      newSettings.port = '5432';
+      newSettings.username = 'postgres';
+    }
+
+    setSettings(newSettings);
+  };
+
+  const handleTestConnection = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/settings/apply', {
+      setTesting(true);
+      const response = await fetch('http://localhost:3001/api/settings/test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -149,187 +112,102 @@ export default function DatabaseSettings() {
 
       const result = await response.json();
       
-      if (response.ok) {
-        Toast.success(t('settings_saved'));
-        await loadStatus();
-        // Notify other components that database settings have changed
-        window.dispatchEvent(new CustomEvent('databaseSettingsChanged'));
+      if (result.success) {
+        alert('Connection test successful!');
       } else {
-        Toast.error(`${t('connection_failed')}: ${result.details}`);
+        alert(`Connection test failed: ${result.message}`);
       }
     } catch (error) {
-      Toast.error(`${t('connection_failed')}: ${error.message}`);
+      console.error('Test connection error:', error);
+      alert('Connection test failed: ' + error.message);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      setLoading(true);
+      
+      // Save the configuration
+      const saveResponse = await fetch('http://localhost:3001/api/configs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...settings,
+          configured: true,
+          is_default: true // Make this the default
+        }),
+      });
+
+      if (!saveResponse.ok) {
+        throw new Error('Failed to save configuration');
+      }
+
+      // Apply the settings
+      const applyResponse = await fetch('http://localhost:3001/api/settings/apply', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings),
+      });
+
+      const result = await applyResponse.json();
+      
+      if (result.success) {
+        alert('Settings saved and applied successfully!');
+        // Dispatch event to notify other components
+        window.dispatchEvent(new CustomEvent('databaseSettingsChanged'));
+        onClose();
+      } else {
+        alert(`Failed to apply settings: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Save settings error:', error);
+      alert('Failed to save settings: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const renderSQLiteFields = () => (
-    <Card title={t('sqlite')} style={{ marginBottom: 16 }}>
-      <Space vertical spacing="loose" style={{ width: '100%' }}>
-        <Input
-          label={t('file_path')}
-          placeholder="/path/to/database.sqlite"
-          value={statusLoading ? 'Loading...' : settings.filePath}
-          onChange={(value) => setSettings(prev => ({ ...prev, filePath: value }))}
-          helpText="This is the current default SQLite database location. You can change it to use a different file."
-          suffix={
-            settings.filePath === status?.defaultSQLitePath ? (
-              <Text type="success" size="small">Default</Text>
-            ) : null
-          }
-          disabled={statusLoading}
-        />
-      </Space>
-    </Card>
-  );
-
-  const renderMySQLPostgresFields = () => (
-    <Card title={settings.engine === 'mysql' ? t('mysql') : t('postgresql')} style={{ marginBottom: 16 }}>
-      <Space vertical spacing="loose" style={{ width: '100%' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <Input
-            label={t('host')}
-            value={settings.host}
-            onChange={(value) => setSettings(prev => ({ ...prev, host: value }))}
-          />
-          <Input
-            label={t('port')}
-            type="number"
-            value={settings.port}
-            onChange={(value) => setSettings(prev => ({ ...prev, port: parseInt(value) || 3306 }))}
-          />
-        </div>
-        
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <Input
-            label={t('username')}
-            value={settings.user}
-            onChange={(value) => setSettings(prev => ({ ...prev, user: value }))}
-          />
-          <Input
-            label={t('password')}
-            type="password"
-            value={settings.password}
-            onChange={(value) => setSettings(prev => ({ ...prev, password: value }))}
-          />
-        </div>
-        
-        <Input
-          label={t('database')}
-          value={settings.database}
-          onChange={(value) => setSettings(prev => ({ ...prev, database: value }))}
-        />
-
-        <Checkbox
-          checked={settings.useSSL}
-          onChange={(checked) => setSettings(prev => ({ ...prev, useSSL: checked }))}
-        >
-          {t('use_ssl')}
-        </Checkbox>
-
-        {settings.useSSL && (
-          <Card title="SSL Configuration" style={{ marginTop: 16 }}>
-            <Space vertical spacing="loose" style={{ width: '100%' }}>
-              <TextArea
-                label={t('ca_certificate')}
-                placeholder="CA certificate content"
-                value={settings.ca}
-                onChange={(value) => setSettings(prev => ({ ...prev, ca: value }))}
-                rows={3}
-              />
-              <TextArea
-                label={t('client_certificate')}
-                placeholder="Client certificate content"
-                value={settings.cert}
-                onChange={(value) => setSettings(prev => ({ ...prev, cert: value }))}
-                rows={3}
-              />
-              <TextArea
-                label={t('client_key')}
-                placeholder="Client key content"
-                value={settings.key}
-                onChange={(value) => setSettings(prev => ({ ...prev, key: value }))}
-                rows={3}
-              />
-            </Space>
-          </Card>
-        )}
-
-        <Checkbox
-          checked={settings.useSSH}
-          onChange={(checked) => setSettings(prev => ({ ...prev, useSSH: checked }))}
-        >
-          {t('use_ssh_tunnel')}
-        </Checkbox>
-
-        {settings.useSSH && (
-          <Card title="SSH Tunnel Configuration" style={{ marginTop: 16 }}>
-            <Space vertical spacing="loose" style={{ width: '100%' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <Input
-                  label={t('ssh_host')}
-                  value={settings.sshHost}
-                  onChange={(value) => setSettings(prev => ({ ...prev, sshHost: value }))}
-                />
-                <Input
-                  label={t('ssh_port')}
-                  type="number"
-                  value={settings.sshPort}
-                  onChange={(value) => setSettings(prev => ({ ...prev, sshPort: parseInt(value) || 22 }))}
-                />
-              </div>
-              
-              <Input
-                label={t('ssh_username')}
-                value={settings.sshUser}
-                onChange={(value) => setSettings(prev => ({ ...prev, sshUser: value }))}
-              />
-              
-              <TextArea
-                label={t('private_key')}
-                placeholder="SSH private key content"
-                value={settings.privateKey}
-                onChange={(value) => setSettings(prev => ({ ...prev, privateKey: value }))}
-                rows={4}
-              />
-              
-              <Input
-                label={t('passphrase')}
-                type="password"
-                placeholder="SSH key passphrase (if any)"
-                value={settings.passphrase}
-                onChange={(value) => setSettings(prev => ({ ...prev, passphrase: value }))}
-              />
-            </Space>
-          </Card>
-        )}
-      </Space>
-    </Card>
-  );
-
   const getCurrentDatabaseStatus = () => {
-    if (status?.connected) {
-      return `${status.engine} - ${status.database || 'Default'}`;
+    if (!status) return 'Loading...';
+    
+    if (status.connected) {
+      return `${status.engine.charAt(0).toUpperCase() + status.engine.slice(1)} (Connected)`;
     }
-    if (status?.engine === 'sqlite') {
-      return 'SQLite (Default)';
+    
+    if (status.defaultConfig?.configured) {
+      return `${status.defaultConfig.engine.charAt(0).toUpperCase() + status.defaultConfig.engine.slice(1)} (Default)`;
     }
+    
     return 'Not configured';
   };
 
   const getCurrentDatabaseStatusColor = () => {
-    if (status?.connected) {
+    if (!status) return 'text-gray-400';
+    
+    if (status.connected) {
       return 'text-green-500';
     }
-    if (status?.engine === 'sqlite') {
+    
+    if (status.defaultConfig?.configured) {
       return 'text-blue-500';
     }
-    return 'text-orange-500';
+    
+    return 'text-red-500';
   };
 
   return (
-    <div style={{ maxWidth: 800 }}>
+    <div className="p-6">
+      <h2 className="text-xl font-semibold text-gray-200 mb-4">
+        {t('database_settings')}
+      </h2>
+
+      {/* Current Database Status */}
       <div className="mb-4">
         <div className="text-sm text-gray-400 mb-2">{t('current_database')}:</div>
         <div className={`text-sm font-medium ${getCurrentDatabaseStatusColor()}`}>
@@ -353,10 +231,23 @@ export default function DatabaseSettings() {
         </select>
       </div>
 
+      {/* Configuration Name */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-300 mb-2">
+          Configuration Name
+        </label>
+        <input
+          type="text"
+          value={settings.name}
+          onChange={(e) => setSettings({ ...settings, name: e.target.value })}
+          placeholder="Enter configuration name"
+          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
       {/* SQLite Configuration */}
       {settings.engine === 'sqlite' && (
         <Card className="mb-4">
-          <div className="text-sm font-medium text-gray-300 mb-3">{t('sqlite')}</div>
           <div className="mb-3">
             <label className="block text-sm text-gray-400 mb-2">
               {t('file_path')}
@@ -382,10 +273,6 @@ export default function DatabaseSettings() {
       {/* MySQL/PostgreSQL Configuration */}
       {(settings.engine === 'mysql' || settings.engine === 'postgresql') && (
         <Card className="mb-4">
-          <div className="text-sm font-medium text-gray-300 mb-3">
-            {settings.engine === 'mysql' ? t('mysql') : t('postgresql')}
-          </div>
-          
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-sm text-gray-400 mb-2">Host</label>
@@ -442,10 +329,99 @@ export default function DatabaseSettings() {
               className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+
+          {/* SSL Configuration */}
+          <div className="mb-4">
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={settings.useSSL}
+                onChange={(e) => setSettings({ ...settings, useSSL: e.target.checked })}
+                className="mr-2"
+              />
+              <span className="text-sm text-gray-300">Use SSL/TLS</span>
+            </label>
+          </div>
+
+          {/* SSH Configuration */}
+          <div className="mb-4">
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={settings.useSSH}
+                onChange={(e) => setSettings({ ...settings, useSSH: e.target.checked })}
+                className="mr-2"
+              />
+              <span className="text-sm text-gray-300">Use SSH Tunnel</span>
+            </label>
+          </div>
+
+          {settings.useSSH && (
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">SSH Host</label>
+                <input
+                  type="text"
+                  value={settings.sshHost || ''}
+                  onChange={(e) => setSettings({ ...settings, sshHost: e.target.value })}
+                  placeholder="SSH server host"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">SSH Port</label>
+                <input
+                  type="number"
+                  value={settings.sshPort || 22}
+                  onChange={(e) => setSettings({ ...settings, sshPort: parseInt(e.target.value) })}
+                  placeholder="22"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {settings.useSSH && (
+            <div className="mb-4">
+              <label className="block text-sm text-gray-400 mb-2">SSH Username</label>
+              <input
+                type="text"
+                value={settings.sshUser || ''}
+                onChange={(e) => setSettings({ ...settings, sshUser: e.target.value })}
+                placeholder="SSH username"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+
+          {settings.useSSH && (
+            <div className="mb-4">
+              <label className="block text-sm text-gray-400 mb-2">Private Key</label>
+              <textarea
+                value={settings.privateKey || ''}
+                onChange={(e) => setSettings({ ...settings, privateKey: e.target.value })}
+                placeholder="SSH private key content"
+                rows={4}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+
+          {settings.useSSH && (
+            <div className="mb-4">
+              <label className="block text-sm text-gray-400 mb-2">Passphrase</label>
+              <input
+                type="password"
+                value={settings.passphrase || ''}
+                onChange={(e) => setSettings({ ...settings, passphrase: e.target.value })}
+                placeholder="Private key passphrase (if any)"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
         </Card>
       )}
 
-      {/* Action Buttons */}
       <div className="flex gap-3">
         <Button
           type="secondary"

@@ -10,33 +10,84 @@ export default function DatabaseSwitcher({
   backendAvailable 
 }) {
   const { t } = useTranslation();
-  const [recentDatabases, setRecentDatabases] = useState([]);
+  const [availableDatabases, setAvailableDatabases] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (useBackendStorage && backendAvailable) {
-      loadRecentDatabases();
+      loadAvailableDatabases();
     }
   }, [useBackendStorage, backendAvailable]);
 
-  const loadRecentDatabases = async () => {
+  // Listen for database settings changes
+  useEffect(() => {
+    const handleDatabaseSettingsChanged = () => {
+      loadAvailableDatabases();
+    };
+
+    window.addEventListener('databaseSettingsChanged', handleDatabaseSettingsChanged);
+    
+    return () => {
+      window.removeEventListener('databaseSettingsChanged', handleDatabaseSettingsChanged);
+    };
+  }, []);
+
+  const loadAvailableDatabases = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3001/api/settings/status');
-      const data = await response.json();
       
-      if (data.connected) {
-        setRecentDatabases([
-          {
-            id: 'current',
-            name: data.database || 'Default',
-            engine: data.engine,
-            type: 'current'
-          }
-        ]);
-      }
+      // Get both configurations and current status
+      const [configsResponse, statusResponse] = await Promise.all([
+        fetch('http://localhost:3001/api/configs'),
+        fetch('http://localhost:3001/api/settings/status')
+      ]);
+      
+      const configs = await configsResponse.json();
+      const status = await statusResponse.json();
+      
+      // Get the current active database engine
+      const currentEngine = status.currentConfig?.engine || status.engine;
+      
+      // Transform configurations to the expected format
+      const databases = configs.map(config => ({
+        id: config.id,
+        name: config.name,
+        engine: config.engine,
+        configured: config.configured,
+        current: config.engine === currentEngine, // Use current engine from status
+        is_default: config.is_default
+      }));
+      
+      setAvailableDatabases(databases);
     } catch (error) {
-      console.error('Failed to load recent databases:', error);
+      console.error('Failed to load available databases:', error);
+      // Fallback to default databases
+      setAvailableDatabases([
+        {
+          id: 'sqlite',
+          name: 'SQLite (Default)',
+          engine: 'sqlite',
+          configured: true,
+          current: true,
+          is_default: true
+        },
+        {
+          id: 'postgresql',
+          name: 'PostgreSQL',
+          engine: 'postgresql',
+          configured: false,
+          current: false,
+          is_default: false
+        },
+        {
+          id: 'mysql',
+          name: 'MySQL',
+          engine: 'mysql',
+          configured: false,
+          current: false,
+          is_default: false
+        }
+      ]);
     } finally {
       setLoading(false);
     }
@@ -68,24 +119,86 @@ export default function DatabaseSwitcher({
     }
   };
 
-  const getDatabaseName = () => {
+  const getCurrentDatabaseName = () => {
     if (!useBackendStorage || !backendAvailable) {
       return 'Local Storage';
     }
     
-    if (currentDatabase?.engine && currentDatabase?.database) {
-      return `${currentDatabase.engine.toUpperCase()} - ${currentDatabase.database}`;
+    const current = availableDatabases.find(db => db.current);
+    if (current) {
+      return current.name;
     }
     
-    return 'Not Connected';
+    // Find default database
+    const defaultDb = availableDatabases.find(db => db.is_default);
+    if (defaultDb) {
+      return defaultDb.name;
+    }
+    
+    return 'SQLite (Default)';
   };
 
-  const getDatabaseIconForCurrent = () => {
+  const getCurrentDatabaseIcon = () => {
     if (!useBackendStorage || !backendAvailable) {
       return '💾';
     }
     
-    return getDatabaseIcon(currentDatabase?.engine || 'sqlite');
+    const current = availableDatabases.find(db => db.current);
+    if (current) {
+      return getDatabaseIcon(current.engine);
+    }
+    
+    // Find default database
+    const defaultDb = availableDatabases.find(db => db.is_default);
+    if (defaultDb) {
+      return getDatabaseIcon(defaultDb.engine);
+    }
+    
+    return getDatabaseIcon('sqlite');
+  };
+
+  const handleDatabaseSelect = async (database) => {
+    console.log('handleDatabaseSelect called with:', database);
+    
+    if (!database.configured) {
+      // If not configured, open settings modal
+      console.log('Database not configured, opening settings');
+      window.dispatchEvent(new CustomEvent('openDatabaseSettings'));
+      return;
+    }
+    
+    // If already current, do nothing
+    if (database.current) {
+      console.log('Database already current, doing nothing');
+      return;
+    }
+    
+    try {
+      console.log('Attempting to connect to database:', database.engine);
+      // Connect to the selected database
+      const response = await fetch(`http://localhost:3001/api/configs/${database.engine}/connect`, {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        console.log('Successfully connected to database:', database.engine);
+        // Switch to the selected database
+        onDatabaseChange(database);
+        
+        // Reload available databases to update current status
+        await loadAvailableDatabases();
+        
+        // Dispatch event to notify other components
+        window.dispatchEvent(new CustomEvent('databaseSettingsChanged'));
+      } else {
+        console.error('Failed to connect to database:', database.engine);
+        const errorData = await response.json();
+        alert(`Failed to connect to ${database.name}: ${errorData.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to switch database:', error);
+      alert(`Failed to switch to ${database.name}: ${error.message}`);
+    }
   };
 
   const menuItems = [
@@ -94,7 +207,6 @@ export default function DatabaseSwitcher({
       name: t('database_settings'),
       icon: '⚙️',
       onClick: () => {
-        // Trigger database settings modal
         window.dispatchEvent(new CustomEvent('openDatabaseSettings'));
       }
     },
@@ -102,11 +214,15 @@ export default function DatabaseSwitcher({
       key: 'divider',
       type: 'divider'
     },
-    ...recentDatabases.map(db => ({
-      key: db.id,
-      name: `${getDatabaseIcon(db.engine)} ${db.name}`,
-      icon: db.type === 'current' ? '✅' : '',
-      onClick: () => onDatabaseChange(db)
+    ...availableDatabases.map((db, index) => ({
+      key: `db-${db.engine}-${db.id || index}`,
+      name: db.configured ? db.name : `${db.name} (Not Configured)`,
+      icon: db.current ? '✅' : getDatabaseIcon(db.engine),
+      disabled: !db.configured,
+      onClick: () => {
+        console.log('Dropdown item clicked for database:', db);
+        handleDatabaseSelect(db);
+      }
     }))
   ];
 
@@ -114,6 +230,7 @@ export default function DatabaseSwitcher({
     <Dropdown
       trigger="click"
       position="bottomLeft"
+      style={{ width: '280px' }}
       render={
         <Dropdown.Menu>
           {menuItems.map((item, index) => (
@@ -123,29 +240,34 @@ export default function DatabaseSwitcher({
               <Dropdown.Item
                 key={item.key}
                 onClick={item.onClick}
-                icon={item.icon}
-                disabled={loading}
+                disabled={item.disabled || loading}
+                style={{ 
+                  opacity: item.disabled ? 0.6 : 1,
+                  cursor: item.disabled ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
               >
-                {item.name}
+                <span className="text-base flex-shrink-0">{item.icon}</span>
+                <span>{item.name}</span>
               </Dropdown.Item>
             )
           ))}
         </Dropdown.Menu>
       }
     >
-      <Tooltip content={t('switch_database')} position="bottom">
-        <Button
-          type="tertiary"
-          theme="borderless"
-          className="flex items-center gap-2 px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
-        >
-          <span className="text-lg">{getDatabaseIconForCurrent()}</span>
-          <span className="text-sm font-medium truncate max-w-32">
-            {getDatabaseName()}
-          </span>
-          <IconChevronDown size="small" />
-        </Button>
-      </Tooltip>
+      <Button
+        type="tertiary"
+        theme="borderless"
+        className="flex items-center gap-4 px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md min-w-0"
+      >
+        <span className="text-lg flex-shrink-0 mr-1">{getCurrentDatabaseIcon()}</span>
+        <span className="text-sm font-medium truncate max-w-48">
+          {getCurrentDatabaseName()}
+        </span>
+        <IconChevronDown size="small" className="flex-shrink-0" />
+      </Button>
     </Dropdown>
   );
 } 

@@ -135,10 +135,17 @@ export default function ControlPanel({
     try {
       const response = await fetch('http://localhost:3001/api/settings/status');
       const data = await response.json();
-      if (data.connected) {
+      if (data.connected && data.currentConfig) {
         setCurrentDatabase({
-          engine: data.engine,
-          database: data.database
+          engine: data.currentConfig.engine,
+          database: data.currentConfig.database || data.currentConfig.name,
+          connected: true
+        });
+      } else if (data.defaultConfig) {
+        setCurrentDatabase({
+          engine: data.defaultConfig.engine,
+          database: data.defaultConfig.database || data.defaultConfig.name,
+          connected: false
         });
       }
     } catch (error) {
@@ -146,10 +153,23 @@ export default function ControlPanel({
     }
   };
 
-  const handleDatabaseChange = (newDatabase) => {
-    setCurrentDatabase(newDatabase);
-    // Here you could implement switching between databases
-    // For now, we'll just update the current database info
+  const handleDatabaseChange = async (newDatabase) => {
+    try {
+      // Update the current database state
+      setCurrentDatabase({
+        engine: newDatabase.engine,
+        database: newDatabase.database || newDatabase.name,
+        connected: true
+      });
+      
+      // Reload the current database status to reflect the change
+      await loadCurrentDatabase();
+      
+      // Show success message
+      console.log(`Successfully switched to ${newDatabase.name}`);
+    } catch (error) {
+      console.error('Failed to switch database:', error);
+    }
   };
   const { saveState, setSaveState } = useSaveState();
   const { layout, setLayout } = useLayout();
