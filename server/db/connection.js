@@ -131,12 +131,12 @@ class ConnectionManager {
         sshTunnel = stream;
       }
 
+      // First, connect without specifying a database
       const mysqlConfig = {
         host: config.useSSH ? '127.0.0.1' : config.host,
         port: config.useSSH ? sshTunnel.localPort : config.port,
-        user: config.user,
+        user: config.username,
         password: config.password,
-        database: config.database,
         ssl: config.useSSL ? {
           ca: config.ca,
           cert: config.cert,
@@ -145,7 +145,30 @@ class ConnectionManager {
       };
 
       connection = await mysql.createConnection(mysqlConfig);
+      
+      // Create database if it doesn't exist
+      await connection.execute(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
+      console.log(`Ensured database exists: ${config.database}`);
+      
+      // Use the database
+      await connection.execute(`USE \`${config.database}\``);
+      
+      // Test the connection
       await connection.ping();
+      
+      // Create the diagrams table if it doesn't exist
+      const createTableSQL = `
+        CREATE TABLE IF NOT EXISTS diagrams (
+          id VARCHAR(255) PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          database_type VARCHAR(50) NOT NULL,
+          content LONGTEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+      `;
+      
+      await connection.execute(createTableSQL);
       
       return { success: true, message: 'MySQL connection successful' };
     } catch (error) {
@@ -171,12 +194,13 @@ class ConnectionManager {
         sshTunnel = stream;
       }
 
+      // First, connect to the default 'postgres' database to create our target database
       const pgConfig = {
         host: config.useSSH ? '127.0.0.1' : config.host,
         port: config.useSSH ? sshTunnel.localPort : config.port,
-        user: config.user,
+        user: config.username,
         password: config.password,
-        database: config.database,
+        database: 'postgres', // Connect to default database first
         ssl: config.useSSL ? {
           ca: config.ca,
           cert: config.cert,
@@ -186,7 +210,43 @@ class ConnectionManager {
 
       client = new Client(pgConfig);
       await client.connect();
+      
+      // Check if our target database exists
+      const dbExistsResult = await client.query(
+        "SELECT 1 FROM pg_database WHERE datname = $1",
+        [config.database]
+      );
+      
+      if (dbExistsResult.rows.length === 0) {
+        // Database doesn't exist, create it
+        await client.query(`CREATE DATABASE "${config.database}"`);
+        console.log(`Created database: ${config.database}`);
+      }
+      
+      // Close connection to postgres database
+      await client.end();
+      
+      // Now connect to our target database
+      pgConfig.database = config.database;
+      client = new Client(pgConfig);
+      await client.connect();
+      
+      // Test the connection
       await client.query('SELECT 1');
+      
+      // Create the diagrams table if it doesn't exist
+      const createTableSQL = `
+        CREATE TABLE IF NOT EXISTS diagrams (
+          id VARCHAR(255) PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          database_type VARCHAR(50) NOT NULL,
+          content TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `;
+      
+      await client.query(createTableSQL);
       
       return { success: true, message: 'PostgreSQL connection successful' };
     } catch (error) {
@@ -267,12 +327,12 @@ class ConnectionManager {
       sshTunnel = stream;
     }
 
+    // First, connect without specifying a database
     const mysqlConfig = {
       host: config.useSSH ? '127.0.0.1' : config.host,
       port: config.useSSH ? sshTunnel.localPort : config.port,
-      user: config.user,
+      user: config.username,
       password: config.password,
-      database: config.database,
       ssl: config.useSSL ? {
         ca: config.ca,
         cert: config.cert,
@@ -280,7 +340,32 @@ class ConnectionManager {
       } : false
     };
 
-    const connection = await mysql.createConnection(mysqlConfig);
+    let connection = await mysql.createConnection(mysqlConfig);
+    
+    // Create database if it doesn't exist
+    await connection.execute(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
+    console.log(`Ensured database exists: ${config.database}`);
+    
+    // Close the initial connection
+    await connection.end();
+    
+    // Now connect to our target database
+    mysqlConfig.database = config.database;
+    connection = await mysql.createConnection(mysqlConfig);
+    
+    // Create the diagrams table if it doesn't exist
+    const createTableSQL = `
+      CREATE TABLE IF NOT EXISTS diagrams (
+        id VARCHAR(255) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        database_type VARCHAR(50) NOT NULL,
+        content LONGTEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `;
+    
+    await connection.execute(createTableSQL);
     
     // Store SSH tunnel reference
     if (sshTunnel) {
@@ -299,12 +384,13 @@ class ConnectionManager {
       sshTunnel = stream;
     }
 
+    // First, connect to the default 'postgres' database to create our target database
     const pgConfig = {
       host: config.useSSH ? '127.0.0.1' : config.host,
       port: config.useSSH ? sshTunnel.localPort : config.port,
-      user: config.user,
+      user: config.username,
       password: config.password,
-      database: config.database,
+      database: 'postgres', // Connect to default database first
       ssl: config.useSSL ? {
         ca: config.ca,
         cert: config.cert,
@@ -312,8 +398,42 @@ class ConnectionManager {
       } : false
     };
 
-    const client = new Client(pgConfig);
+    let client = new Client(pgConfig);
     await client.connect();
+    
+    // Check if our target database exists
+    const dbExistsResult = await client.query(
+      "SELECT 1 FROM pg_database WHERE datname = $1",
+      [config.database]
+    );
+    
+    if (dbExistsResult.rows.length === 0) {
+      // Database doesn't exist, create it
+      await client.query(`CREATE DATABASE "${config.database}"`);
+      console.log(`Created database: ${config.database}`);
+    }
+    
+    // Close connection to postgres database
+    await client.end();
+    
+    // Now connect to our target database
+    pgConfig.database = config.database;
+    client = new Client(pgConfig);
+    await client.connect();
+    
+    // Create the diagrams table if it doesn't exist
+    const createTableSQL = `
+      CREATE TABLE IF NOT EXISTS diagrams (
+        id VARCHAR(255) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        database_type VARCHAR(50) NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    
+    await client.query(createTableSQL);
     
     // Store SSH tunnel reference
     if (sshTunnel) {
