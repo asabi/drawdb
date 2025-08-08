@@ -31,6 +31,10 @@ const en = {
     diagram_updated_by_another_user: "This diagram has been updated by another user. Would you like to reload to see the latest changes?",
     reload: "Reload",
     cancel: "Cancel",
+    continue: "Continue without saving",
+    unsaved_changes: "Unsaved changes",
+    unsaved_changes_open_warning:
+      "You have unsaved changes. Would you like to save them before continuing?",
     import_diagram: "Import diagram",
     import_from_source: "Import from SQL",
     export_as: "Export as",
