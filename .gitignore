@@ -28,3 +28,6 @@ server/drawdb.sqlite
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+
+# Docker data directories
+data/
