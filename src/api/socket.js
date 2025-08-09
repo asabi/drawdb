@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import apiConfig from './config';
 
 class SocketService {
   constructor() {
@@ -7,13 +8,9 @@ class SocketService {
     this.isConnected = false;
   }
 
-  // Get backend URL dynamically (same logic as diagrams.js)
+  // Get backend URL dynamically
   getBackendUrl() {
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:3001';
-    }
-    return `http://${hostname}:3001`;
+    return apiConfig.getSocketUrl();
   }
 
   // Connect to Socket.IO server
@@ -24,11 +21,13 @@ class SocketService {
     }
 
     const backendUrl = this.getBackendUrl();
-    console.log('Connecting to Socket.IO server:', backendUrl);
+    console.log('🔌 Connecting to Socket.IO server:', backendUrl);
+    console.log('📍 Current location:', window.location.href);
     
     this.socket = io(backendUrl, {
       transports: ['websocket', 'polling'],
       timeout: 20000,
+      forceNew: true,
     });
 
     this.socket.on('connect', () => {
@@ -105,10 +104,9 @@ class SocketService {
     }
 
     console.log('Emitting diagram update for:', diagramId);
-    this.socket.emit('diagram-updated', {
+    this.socket.emit('diagram-update', {
       diagramId,
-      timestamp: new Date().toISOString(),
-      ...updateData
+      updates: updateData
     });
   }
 

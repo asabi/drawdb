@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, createContext } from "react";
+import { useState, useEffect, useCallback, createContext, useRef, useMemo } from "react";
 import ControlPanel from "./EditorHeader/ControlPanel";
 import Canvas from "./EditorCanvas/Canvas";
 import { CanvasContextProvider } from "../context/CanvasContext";
@@ -48,8 +48,10 @@ export default function WorkSpace() {
   const [isReloading, setIsReloading] = useState(false);
   const [isUpdatingFromCollaboration, setIsUpdatingFromCollaboration] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [recentDatabaseSwitch, setRecentDatabaseSwitch] = useState(false);
+  const [justCreated, setJustCreated] = useState(false);
   const { layout } = useLayout();
-  const { settings } = useSettings();
+  const { settings, isLoaded } = useSettings();
   const { types, setTypes } = useTypes();
   const { areas, setAreas } = useAreas();
   const { tasks, setTasks } = useTasks();
@@ -68,6 +70,27 @@ export default function WorkSpace() {
   const { undoStack, redoStack, setUndoStack, setRedoStack } = useUndoRedo();
   const { t, i18n } = useTranslation();
   let [searchParams, setSearchParams] = useSearchParams();
+
+  // Track last-saved content signature to prevent redundant autosaves
+  const lastSavedSignatureRef = useRef("");
+  const autosaveTimerRef = useRef(null);
+
+  const contentSignature = useMemo(() => {
+    try {
+      return JSON.stringify({
+        title,
+        tables,
+        relationships,
+        notes,
+        areas,
+        tasks,
+        transform,
+        database,
+      });
+    } catch (err) {
+      return "";
+    }
+  }, [title, tables, relationships, notes, areas, tasks, transform, database]);
 
   // Determine if the current diagram has been persisted at least once
   const isPersisted = (() => {
@@ -149,20 +172,24 @@ export default function WorkSpace() {
                         // Set up diagram update listener
                   socketService.onDiagramUpdate((data) => {
                     const currentSocketId = socketService.getConnectionStatus().socketId;
-                    console.log('Received real-time update for diagram:', data.diagramId);
-                    console.log('Update from client:', data.updatedBy);
-                    console.log('Current client socket ID:', currentSocketId);
+                    console.log('📡 Received real-time update for diagram:', data.diagramId);
+                    console.log('📡 Update from client:', data.updatedBy);
+                    console.log('📡 Current client socket ID:', currentSocketId);
+                    console.log('📡 Full update data:', data);
                     
                     // Only process if the update is from another client (not from ourselves)
                     if (data.updatedBy && data.updatedBy !== currentSocketId) {
                       console.log('✅ Update is from another user');
                       console.log('🔧 Auto-update setting value:', settings.autoUpdateOnCollaboration);
                       console.log('🔧 Auto-update setting type:', typeof settings.autoUpdateOnCollaboration);
+                      console.log('🔧 Settings loaded:', isLoaded);
                       console.log('🔧 Full settings object:', settings);
                       
                       // Check if auto-update is enabled (explicit boolean check)
-                      const shouldAutoUpdate = settings.autoUpdateOnCollaboration === true;
+                      // Only proceed if settings are loaded
+                      const shouldAutoUpdate = isLoaded && settings.autoUpdateOnCollaboration === true;
                       console.log('🔧 Should auto-update:', shouldAutoUpdate);
+                      console.log('🔧 Settings loaded check:', isLoaded);
                       
                       if (shouldAutoUpdate) {
                         console.log('🔄 Auto-update enabled, updating automatically');
@@ -318,7 +345,7 @@ export default function WorkSpace() {
     const name = window.name.split(" ");
     const op = name[0];
     const saveAsDiagram = window.name === "" || op === "d" || op === "lt";
-    console.log('Save operation:', { name: window.name, op, saveAsDiagram });
+    console.log('Save operation:', { name: window.name, op, saveAsDiagram, currentId: id });
 
     if (saveAsDiagram) {
       searchParams.delete("shareId");
@@ -341,18 +368,24 @@ export default function WorkSpace() {
 
           const isTemplateSave = op === 'lt';
           const hasNoDiagramId = id === 0 || id === '' || id === null || typeof id === 'undefined';
-          const isNewDiagram = hasNoDiagramId && window.name === '';
+          const isNewDiagram = hasNoDiagramId || window.name === '';
           console.log('Save path decision:', { isTemplateSave, hasNoDiagramId, isNewDiagram, id, windowName: window.name });
 
           if (isTemplateSave || isNewDiagram) {
             // Create new diagram
             console.log('Creating new diagram with backend');
             const result = await createDiagram(title, database, diagramContent);
-            console.log('Diagram created successfully:', result);
+            console.log('✅ Diagram created successfully:', result);
             setId(result.id);
             window.name = `d ${result.id}`;
             setSaveState(State.SAVED);
             setLastSaved(new Date().toLocaleString());
+            console.log('🔒 Save state set to SAVED after creating new diagram');
+            // Record last saved signature
+            lastSavedSignatureRef.current = contentSignature;
+            // Ensure autosave is enabled for subsequent edits after first create
+            setIsInitialLoad(false);
+            setJustCreated(true);
             
             // Emit real-time update to other clients (only if not reloading)
             if (!isReloading) {
@@ -366,9 +399,11 @@ export default function WorkSpace() {
             console.log('Updating existing diagram with backend, id:', id);
             try {
               await updateDiagram(id, title, database, diagramContent);
-              console.log('Diagram updated successfully');
+              console.log('✅ Diagram updated successfully');
               setSaveState(State.SAVED);
               setLastSaved(new Date().toLocaleString());
+              console.log('🔒 Save state set to SAVED after updating existing diagram');
+              lastSavedSignatureRef.current = contentSignature;
               
               // Emit real-time update to other clients (only if not reloading)
               if (!isReloading) {
@@ -382,11 +417,14 @@ export default function WorkSpace() {
                 // Diagram doesn't exist in backend, create it instead
                 console.log('Diagram not found in backend, creating new one');
                 const result = await createDiagram(title, database, diagramContent);
-                console.log('Diagram created successfully:', result);
+                console.log('✅ Diagram created successfully (fallback):', result);
                 setId(result.id);
                 window.name = `d ${result.id}`;
                 setSaveState(State.SAVED);
                 setLastSaved(new Date().toLocaleString());
+                console.log('🔒 Save state set to SAVED after creating fallback diagram');
+                lastSavedSignatureRef.current = contentSignature;
+                setIsInitialLoad(false);
                 
                 // Emit real-time update to other clients (only if not reloading)
                 if (!isReloading) {
@@ -426,6 +464,9 @@ export default function WorkSpace() {
                 window.name = `d ${id}`;
                 setSaveState(State.SAVED);
                 setLastSaved(new Date().toLocaleString());
+                console.log('🔒 Save state set to SAVED after local storage create');
+                lastSavedSignatureRef.current = contentSignature;
+                setIsInitialLoad(false);
               });
           } else {
             await db.diagrams
@@ -448,6 +489,8 @@ export default function WorkSpace() {
               .then(() => {
                 setSaveState(State.SAVED);
                 setLastSaved(new Date().toLocaleString());
+                console.log('🔒 Save state set to SAVED after local storage update');
+                lastSavedSignatureRef.current = contentSignature;
               });
           }
         }
@@ -590,6 +633,8 @@ export default function WorkSpace() {
               if (databases[fullDiagram.databaseType]?.hasEnums) {
                 setEnums(fullDiagram.content.enums || []);
               }
+            // Ensure the database picker modal is closed if it was open
+            setShowSelectDbModal(false);
             setIsLoadingDiagram(false);
               setTimeout(() => setIsInitialLoad(false), 500);
             return;
@@ -699,9 +744,10 @@ export default function WorkSpace() {
         }
       }
       
-      // Fallback to local storage
+      // Fallback to local storage (Dexie uses numeric ids). Convert if numeric-like.
+      const localId = typeof id === 'string' && /^\d+$/.test(id) ? Number(id) : id;
       await db.diagrams
-        .get(id)
+        .get(localId)
         .then((diagram) => {
           if (diagram) {
             if (diagram.database) {
@@ -830,7 +876,8 @@ export default function WorkSpace() {
     } else {
       const name = window.name.split(" ");
       const op = name[0];
-      const id = parseInt(name[1]);
+      // Keep id as string (backend uses string ids); only cast to number for Dexie when needed
+      const id = name[1];
       switch (op) {
         case "d": {
           await loadDiagram(id);
@@ -858,7 +905,6 @@ export default function WorkSpace() {
     setDatabase,
     database,
     setEnums,
-    selectedDb,
     setSaveState,
     searchParams,
     useBackendStorage,
@@ -866,21 +912,32 @@ export default function WorkSpace() {
   ]);
 
   useEffect(() => {
-    // Trigger autosave whenever there is content and autosave is enabled
-    if (
-      tables?.length === 0 &&
-      areas?.length === 0 &&
-      notes?.length === 0 &&
-      types?.length === 0 &&
-      tasks?.length === 0
-    )
-      return;
+    // Trigger autosave whenever content changes and autosave is enabled
 
     // Only autosave if the diagram has been persisted at least once
     if (!isPersisted) return;
 
+    // Don't autosave during initial load or while a save is in progress
+    if (isInitialLoad || saveState === State.SAVING) return;
+
+    // Don't autosave if we're currently loading a diagram
+    if (isLoadingDiagram) return;
+
+    // Don't autosave immediately after database switching
+    if (recentDatabaseSwitch) {
+      console.log('⏸️ Skipping autosave due to recent database switch');
+      return;
+    }
+
     if (settings.autosave) {
-      setSaveState(State.SAVING);
+      // Only autosave when content changed compared to last saved state
+      if (contentSignature === lastSavedSignatureRef.current) return;
+      // Debounce autosave
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = setTimeout(() => {
+        console.log('🔄 Triggering autosave due to content changes');
+        setSaveState(State.SAVING);
+      }, 800);
     }
   }, [
     undoStack,
@@ -899,6 +956,11 @@ export default function WorkSpace() {
     gistId,
     isPersisted,
     setSaveState,
+    isInitialLoad,
+    saveState,
+    isLoadingDiagram,
+    recentDatabaseSwitch,
+    contentSignature,
   ]);
 
   useEffect(() => {
@@ -907,11 +969,48 @@ export default function WorkSpace() {
     }
   }, [saveState, save]);
 
+  // Clear the justCreated flag after the first content change following creation
+  useEffect(() => {
+    if (!justCreated) return;
+    // If content differs from the saved signature, allow autosave as normal
+    if (contentSignature !== lastSavedSignatureRef.current) {
+      setJustCreated(false);
+    }
+  }, [justCreated, contentSignature]);
+
   useEffect(() => {
     document.title = "Editor | drawDB";
 
     load();
   }, [load]);
+
+  // Handle database connection changes
+  useEffect(() => {
+    const handleDatabaseChange = () => {
+      console.log('🔄 Database connection changed, temporarily blocking autosave');
+      
+      // Set flag to prevent autosave immediately after database switch
+      setRecentDatabaseSwitch(true);
+      
+      // Clear the flag after a short delay
+      setTimeout(() => {
+        setRecentDatabaseSwitch(false);
+        console.log('✅ Database switch cooldown completed, autosave re-enabled');
+      }, 2000); // 2 second cooldown
+      
+      // When database changes, preserve the current save state
+      if (saveState === State.SAVED) {
+        console.log('✅ Preserving SAVED state after database change');
+      }
+    };
+
+    // Listen for database settings changes
+    window.addEventListener('databaseSettingsChanged', handleDatabaseChange);
+    
+    return () => {
+      window.removeEventListener('databaseSettingsChanged', handleDatabaseChange);
+    };
+  }, [saveState]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden theme">

@@ -23,7 +23,6 @@ import { Parser } from "node-sql-parser";
 import { Parser as OracleParser } from "oracle-sql-parser";
 import {
   getModalTitle,
-  getModalWidth,
   getOkText,
 } from "../../../utils/modalData";
 import Rename from "./Rename";
@@ -34,6 +33,7 @@ import ImportSource from "./ImportSource";
 import SetTableWidth from "./SetTableWidth";
 import Language from "./Language";
 import Share from "./Share";
+import DatabaseSettings from "./DatabaseSettings";
 import CodeEditor from "../../CodeEditor";
 import { useTranslation } from "react-i18next";
 import { importSQL } from "../../../utils/importSQL";
@@ -336,6 +336,8 @@ export default function Modal({
             onChange={(v) => setSaveAsTitle(v)}
           />
         );
+      case MODAL.DATABASE_SETTINGS:
+        return <DatabaseSettings onClose={() => setModal(MODAL.NONE)} />;
       case MODAL.CODE:
       case MODAL.IMG:
         if (exportData.data !== "" || exportData.data) {
@@ -382,6 +384,31 @@ export default function Modal({
     }
   };
 
+  const getModalWidth = () => {
+    switch (modal) {
+      case MODAL.DATABASE_SETTINGS:
+        return 800;
+      case MODAL.SHARE:
+        return 600;
+      case MODAL.IMPORT_SOURCE:
+        return 500;
+      case MODAL.IMPORT_DIAGRAM:
+        return 500;
+      case MODAL.LANGUAGE:
+        return 400;
+      case MODAL.NEW:
+        return 780;
+      case MODAL.OPEN:
+        return 780;
+      case MODAL.RENAME:
+        return 400;
+      case MODAL.SET_TABLE_WIDTH:
+        return 400;
+      default:
+        return 500;
+    }
+  };
+
   return (
     <SemiUIModal
       style={isRtl(i18n.language) ? { direction: "rtl" } : {}}
@@ -424,7 +451,7 @@ export default function Modal({
       }}
       hasCancel={modal !== MODAL.SHARE}
       cancelText={t("cancel")}
-      width={getModalWidth(modal)}
+      width={getModalWidth()}
       bodyStyle={{
         maxHeight: window.innerHeight - 280,
         overflow:

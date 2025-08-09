@@ -10,6 +10,7 @@ import {
   IconRedo,
   IconEdit,
   IconShareStroked,
+  IconSetting,
 } from "@douyinfe/semi-icons";
 import { Link, useNavigate } from "react-router-dom";
 import icon from "../../assets/icon_dark_64.png";
@@ -83,6 +84,8 @@ import { toDBML } from "../../utils/exportAs/dbml";
 import { exportSavedData } from "../../utils/exportSavedData";
 import { nanoid } from "nanoid";
 import { getTableHeight } from "../../utils/utils";
+import DatabaseSwitcher from "./DatabaseSwitcher";
+import apiConfig from "../../api/config";
 
 export default function ControlPanel({
   diagramId,
@@ -107,6 +110,68 @@ export default function ControlPanel({
     extension: "",
   });
   const [importFrom, setImportFrom] = useState(IMPORT_FROM.JSON);
+  const [currentDatabase, setCurrentDatabase] = useState(null);
+
+  // Load current database status
+  useEffect(() => {
+    if (useBackendStorage && backendAvailable) {
+      loadCurrentDatabase();
+    }
+  }, [useBackendStorage, backendAvailable]);
+
+  // Listen for database settings changes
+  useEffect(() => {
+    const handleDatabaseSettingsChanged = () => {
+      loadCurrentDatabase();
+    };
+
+    window.addEventListener('databaseSettingsChanged', handleDatabaseSettingsChanged);
+    
+    return () => {
+      window.removeEventListener('databaseSettingsChanged', handleDatabaseSettingsChanged);
+    };
+  }, []);
+
+  const loadCurrentDatabase = async () => {
+    try {
+      const response = await fetch(apiConfig.getUrl('/settings/status'));
+      const data = await response.json();
+      if (data.connected && data.currentConfig) {
+        setCurrentDatabase({
+          engine: data.currentConfig.engine,
+          database: data.currentConfig.database || data.currentConfig.name,
+          connected: true
+        });
+      } else if (data.defaultConfig) {
+        setCurrentDatabase({
+          engine: data.defaultConfig.engine,
+          database: data.defaultConfig.database || data.defaultConfig.name,
+          connected: false
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load current database:', error);
+    }
+  };
+
+  const handleDatabaseChange = async (newDatabase) => {
+    try {
+      // Update the current database state
+      setCurrentDatabase({
+        engine: newDatabase.engine,
+        database: newDatabase.database || newDatabase.name,
+        connected: true
+      });
+      
+      // Reload the current database status to reflect the change
+      await loadCurrentDatabase();
+      
+      // Show success message
+      console.log(`Successfully switched to ${newDatabase.name}`);
+    } catch (error) {
+      console.error('Failed to switch database:', error);
+    }
+  };
   const { saveState, setSaveState } = useSaveState();
   const { layout, setLayout } = useLayout();
   const { settings, setSettings } = useSettings();
@@ -798,8 +863,17 @@ export default function ControlPanel({
       confirmUnsavedThen(() => setModal(MODAL.OPEN));
     };
 
+    const handleOpenDatabaseSettings = () => {
+      setModal(MODAL.DATABASE_SETTINGS);
+    };
+
     window.addEventListener('openFromDatabase', handleOpenFromDatabase);
-    return () => window.removeEventListener('openFromDatabase', handleOpenFromDatabase);
+    window.addEventListener('openDatabaseSettings', handleOpenDatabaseSettings);
+    
+    return () => {
+      window.removeEventListener('openFromDatabase', handleOpenFromDatabase);
+      window.removeEventListener('openDatabaseSettings', handleOpenDatabaseSettings);
+    };
   }, [confirmUnsavedThen]);
 
   const menu = {
@@ -1504,6 +1578,9 @@ export default function ControlPanel({
       language: {
         function: () => setModal(MODAL.LANGUAGE),
       },
+      database_settings: {
+        function: () => setModal(MODAL.DATABASE_SETTINGS),
+      },
       export_saved_data: {
         function: exportSavedData,
       },
@@ -2003,19 +2080,27 @@ export default function ControlPanel({
                   </Dropdown>
                 ))}
               </div>
-              <Button
-                size="small"
-                type="tertiary"
-                icon={
-                  saveState === State.LOADING || saveState === State.SAVING ? (
-                    <Spin size="small" />
-                  ) : isUpdatingFromCollaboration ? (
-                    <Spin size="small" />
-                  ) : null
-                }
-              >
-                {isUpdatingFromCollaboration ? "🔄 Updating from collaboration..." : getState()}
-              </Button>
+              <div className="flex items-center gap-2">
+                <DatabaseSwitcher
+                  currentDatabase={currentDatabase}
+                  onDatabaseChange={handleDatabaseChange}
+                  useBackendStorage={useBackendStorage}
+                  backendAvailable={backendAvailable}
+                />
+                <Button
+                  size="small"
+                  type="tertiary"
+                  icon={
+                    saveState === State.LOADING || saveState === State.SAVING ? (
+                      <Spin size="small" />
+                    ) : isUpdatingFromCollaboration ? (
+                      <Spin size="small" />
+                    ) : null
+                  }
+                >
+                  {isUpdatingFromCollaboration ? "🔄 Updating from collaboration..." : getState()}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

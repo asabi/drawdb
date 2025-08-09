@@ -21,13 +21,15 @@ if [ ! -f "drawdb.sqlite" ]; then
     echo "📊 Initializing database..."
     npm run init-db
 fi
-node server.js &
+echo "Starting server from $(pwd)..."
+node server.js > /tmp/drawdb-backend.log 2>&1 &
 BACKEND_PID=$!
+echo "Backend PID: $BACKEND_PID"
 cd ..
 
 # Wait for backend to start
 echo "⏳ Waiting for backend to start..."
-sleep 3
+sleep 5
 
 # Test backend
 echo "🧪 Testing backend..."
@@ -35,6 +37,8 @@ if curl -s http://localhost:3001/api/health > /dev/null; then
     echo "✅ Backend is running at http://localhost:3001"
 else
     echo "❌ Backend failed to start"
+    echo "Backend log:"
+    cat /tmp/drawdb-backend.log 2>/dev/null || echo "No log file found"
     kill $BACKEND_PID 2>/dev/null
     exit 1
 fi
