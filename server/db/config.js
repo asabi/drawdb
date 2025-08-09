@@ -146,18 +146,31 @@ class ConfigManager {
   // Encrypt sensitive data
   encrypt(text, key = process.env.ENCRYPTION_KEY || 'default-key-change-in-production') {
     if (!text) return '';
-    const cipher = crypto.createCipher('aes-256-cbc', key);
+    const algorithm = 'aes-256-cbc';
+    const iv = crypto.randomBytes(16);
+    const keyHash = crypto.createHash('sha256').update(key).digest();
+    const cipher = crypto.createCipheriv(algorithm, keyHash, iv);
     let encrypted = cipher.update(text, 'utf8', 'hex');
     encrypted += cipher.final('hex');
-    return encrypted;
+    return iv.toString('hex') + ':' + encrypted;
   }
 
   // Decrypt sensitive data
   decrypt(encryptedText, key = process.env.ENCRYPTION_KEY || 'default-key-change-in-production') {
     if (!encryptedText) return '';
     try {
-      const decipher = crypto.createDecipher('aes-256-cbc', key);
-      let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+      const algorithm = 'aes-256-cbc';
+      const keyHash = crypto.createHash('sha256').update(key).digest();
+      const parts = encryptedText.split(':');
+      if (parts.length !== 2) {
+        // Handle old format without IV (backward compatibility)
+        console.warn('Encrypted data in old format, returning as-is');
+        return encryptedText;
+      }
+      const iv = Buffer.from(parts[0], 'hex');
+      const encryptedData = parts[1];
+      const decipher = crypto.createDecipheriv(algorithm, keyHash, iv);
+      let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
       decrypted += decipher.final('utf8');
       return decrypted;
     } catch (error) {

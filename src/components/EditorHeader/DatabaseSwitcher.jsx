@@ -50,7 +50,16 @@ export default function DatabaseSwitcher({
       const currentEngine = status.currentConfig?.engine || status.engine;
       
       // Transform configurations to the expected format
-      const databases = configs.map(config => ({
+      // Deduplicate by engine+name (defensive in case backend returns dup rows)
+      const seen = new Set();
+      const databases = configs
+        .filter(cfg => {
+          const key = `${cfg.engine}:${cfg.name}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .map(config => ({
         id: config.id,
         name: config.name,
         engine: config.engine,
@@ -59,6 +68,7 @@ export default function DatabaseSwitcher({
         is_default: config.is_default
       }));
       
+      // Replace list (do not append)
       setAvailableDatabases(databases);
     } catch (error) {
       console.error('Failed to load available databases:', error);

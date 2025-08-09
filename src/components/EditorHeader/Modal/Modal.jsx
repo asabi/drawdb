@@ -397,9 +397,9 @@ export default function Modal({
       case MODAL.LANGUAGE:
         return 400;
       case MODAL.NEW:
-        return 400;
+        return 780;
       case MODAL.OPEN:
-        return 400;
+        return 780;
       case MODAL.RENAME:
         return 400;
       case MODAL.SET_TABLE_WIDTH:

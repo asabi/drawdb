@@ -51,6 +51,20 @@ export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
     });
   }, [diagrams, searchTerm]);
 
+  // Deduplicate by id (defensive against legacy duplicates)
+  const uniqueDiagrams = useMemo(() => {
+    if (!filteredDiagrams) return filteredDiagrams;
+    const seen = new Set();
+    const list = [];
+    for (const d of filteredDiagrams) {
+      const key = String(d.id ?? `${d.title || d.name || ''}|${d.database || d.databaseType || ''}`);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push(d);
+    }
+    return list;
+  }, [filteredDiagrams]);
+
   const getDiagramSize = (d) => {
     const size = JSON.stringify(d).length;
     let sizeStr;
@@ -113,7 +127,6 @@ export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
         </div>
       ) : diagrams?.length === 0 ? (
         <Empty
-          image={<Empty.Image />}
           description="You have no saved diagrams."
           className="py-12"
         />
@@ -134,9 +147,8 @@ export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
 
           {/* Diagrams List */}
           <div className="max-h-[400px] overflow-y-auto">
-            {filteredDiagrams?.length === 0 ? (
+            {uniqueDiagrams?.length === 0 ? (
               <Empty
-                image={<Empty.Image />}
                 description={
                   searchTerm.trim() 
                     ? t("no_diagrams_found") 
@@ -146,16 +158,17 @@ export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
               />
             ) : (
               <div className="space-y-2">
-                {filteredDiagrams?.map((d) => {
+                {uniqueDiagrams?.map((d, idx) => {
                   // Handle different data structures from backend vs local storage
-                  const name = d.name || d.title;
-                  const lastModified = d.lastModified || new Date(d.updatedAt);
+                  const name = d.name || d.title || '';
+                  const rawDate = d.lastModified || d.updatedAt;
+                  const dateObj = rawDate instanceof Date ? rawDate : (rawDate ? new Date(rawDate) : null);
                   const databaseType = d.database || d.databaseType;
                   const isSelected = selectedDiagramId === d.id;
                   
                   return (
                     <div
-                      key={d.id}
+                      key={String(d.id ?? `${name}-${databaseType}-${idx}`)}
                       className={`
                         relative p-4 rounded-lg border cursor-pointer transition-all duration-200
                         ${isSelected 
@@ -179,9 +192,11 @@ export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
                               <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                                 {name}
                               </h3>
-                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                {lastModified.toLocaleDateString()} at {lastModified.toLocaleTimeString()}
-                              </p>
+                              {dateObj && !isNaN(dateObj) && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                  {dateObj.toLocaleDateString()} at {dateObj.toLocaleTimeString()}
+                                </p>
+                              )}
                             </div>
                           </div>
                           
@@ -225,9 +240,9 @@ export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
           </div>
           
           {/* Results Count */}
-          {searchTerm.trim() && filteredDiagrams && (
+          {searchTerm.trim() && uniqueDiagrams && (
             <div className="text-xs text-gray-500 dark:text-gray-400 text-center pt-2 border-t border-gray-200 dark:border-gray-700">
-              {filteredDiagrams.length} of {diagrams?.length || 0} diagrams found
+              {uniqueDiagrams.length} of {diagrams?.length || 0} diagrams found
             </div>
           )}
         </div>

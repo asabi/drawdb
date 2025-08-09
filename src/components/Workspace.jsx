@@ -633,6 +633,8 @@ export default function WorkSpace() {
               if (databases[fullDiagram.databaseType]?.hasEnums) {
                 setEnums(fullDiagram.content.enums || []);
               }
+            // Ensure the database picker modal is closed if it was open
+            setShowSelectDbModal(false);
             setIsLoadingDiagram(false);
               setTimeout(() => setIsInitialLoad(false), 500);
             return;
@@ -903,7 +905,6 @@ export default function WorkSpace() {
     setDatabase,
     database,
     setEnums,
-    selectedDb,
     setSaveState,
     searchParams,
     useBackendStorage,
