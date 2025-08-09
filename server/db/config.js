@@ -54,18 +54,23 @@ class ConfigManager {
             return;
           }
 
-          // Insert default SQLite configuration if it doesn't exist
-          this.ensureDefaultConfig().then(resolve).catch(reject);
+          // Ensure defaults, clean duplicates and normalize bad field mixes
+          this.ensureDefaultConfig()
+            .then(() => this.cleanupDuplicates())
+            .then(() => this.normalizeExistingRows())
+            .then(resolve)
+            .catch(reject);
         });
       });
     });
   }
 
-  // Ensure default SQLite configuration exists
+  // Ensure a baseline SQLite configuration exists once
   async ensureDefaultConfig() {
     return new Promise((resolve, reject) => {
+      // If ANY sqlite config exists, do nothing (avoid duplicating on every boot)
       this.db.get(
-        "SELECT * FROM database_configs WHERE engine = 'sqlite' AND is_default = 1",
+        "SELECT id FROM database_configs WHERE engine = 'sqlite' LIMIT 1",
         (err, row) => {
           if (err) {
             reject(err);
@@ -73,24 +78,68 @@ class ConfigManager {
           }
 
           if (!row) {
-            // Insert default SQLite configuration
             const defaultSQLitePath = join(__dirname, '..', 'drawdb.sqlite');
-            this.db.run(`
-              INSERT INTO database_configs (
+            this.db.run(
+              `INSERT INTO database_configs (
                 engine, name, filePath, configured, is_default
-              ) VALUES (?, ?, ?, ?, ?)
-            `, ['sqlite', 'SQLite (Default)', defaultSQLitePath, true, true], (err) => {
-              if (err) {
-                reject(err);
-              } else {
-                resolve();
+              ) VALUES (?, ?, ?, ?, ?)`,
+              // Do not force this as default to avoid flipping user's default engine
+              ['sqlite', 'SQLite (Default)', defaultSQLitePath, true, 0],
+              (insertErr) => {
+                if (insertErr) {
+                  reject(insertErr);
+                } else {
+                  resolve();
+                }
               }
-            });
+            );
           } else {
             resolve();
           }
         }
       );
+    });
+  }
+
+  // Remove duplicate rows keeping the oldest per (engine,name)
+  async cleanupDuplicates() {
+    return new Promise((resolve, reject) => {
+      const sql = `DELETE FROM database_configs
+                   WHERE id NOT IN (
+                     SELECT MIN(id) FROM database_configs GROUP BY engine, name
+                   )`;
+      this.db.run(sql, (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  // Normalize any mixed/corrupted engine-specific fields at rest
+  // - Non-sqlite engines must NOT have filePath
+  // - Sqlite engine should NOT carry host/port/username/password/database/SSL/SSH fields
+  async normalizeExistingRows() {
+    return new Promise((resolve, reject) => {
+      this.db.serialize(() => {
+        // Remove stray filePath from non-sqlite configs
+        this.db.run(
+          "UPDATE database_configs SET filePath = NULL WHERE engine != 'sqlite' AND filePath IS NOT NULL",
+          (e1) => {
+            if (e1) return reject(e1);
+            // Clear network-only fields for sqlite configs
+            this.db.run(
+              "UPDATE database_configs SET host=NULL, port=NULL, username=NULL, password=NULL, database=NULL, useSSL=0, useSSH=0, sshHost=NULL, sshPort=NULL, sshUser=NULL, privateKey=NULL, passphrase=NULL, ca=NULL, cert=NULL, key=NULL WHERE engine = 'sqlite'",
+              (e2) => {
+                if (e2) return reject(e2);
+                resolve();
+              }
+            );
+          }
+        );
+      });
     });
   }
 
@@ -120,11 +169,13 @@ class ConfigManager {
   // Save a database configuration
   async saveConfig(config) {
     return new Promise((resolve, reject) => {
+      // Sanitize engine-specific fields before persisting
+      const cleaned = this.sanitizeForEngine(config);
       const {
         engine, name, host, port, username, password, database, filePath,
         useSSL, useSSH, sshHost, sshPort, sshUser, privateKey, passphrase,
         ca, cert, key, configured = true, is_default = false
-      } = config;
+      } = cleaned;
 
       // Encrypt sensitive fields
       const encryptedPassword = this.encrypt(password);
@@ -201,31 +252,34 @@ class ConfigManager {
         }
 
         // Decrypt sensitive fields
-        const configs = rows.map(row => ({
-          id: row.id,
-          engine: row.engine,
-          name: row.name,
-          host: row.host,
-          port: row.port,
-          username: row.username,
-          password: this.decrypt(row.password),
-          database: row.database,
-          filePath: row.filePath,
-          useSSL: Boolean(row.useSSL),
-          useSSH: Boolean(row.useSSH),
-          sshHost: row.sshHost,
-          sshPort: row.sshPort,
-          sshUser: row.sshUser,
-          privateKey: this.decrypt(row.privateKey),
-          passphrase: this.decrypt(row.passphrase),
-          ca: this.decrypt(row.ca),
-          cert: this.decrypt(row.cert),
-          key: this.decrypt(row.key),
-          configured: Boolean(row.configured),
-          is_default: Boolean(row.is_default),
-          created_at: row.created_at,
-          updated_at: row.updated_at
-        }));
+        const configs = rows.map(row => {
+          const cfg = {
+            id: row.id,
+            engine: row.engine,
+            name: row.name,
+            host: row.host,
+            port: row.port,
+            username: row.username,
+            password: this.decrypt(row.password),
+            database: row.database,
+            filePath: row.filePath,
+            useSSL: Boolean(row.useSSL),
+            useSSH: Boolean(row.useSSH),
+            sshHost: row.sshHost,
+            sshPort: row.sshPort,
+            sshUser: row.sshUser,
+            privateKey: this.decrypt(row.privateKey),
+            passphrase: this.decrypt(row.passphrase),
+            ca: this.decrypt(row.ca),
+            cert: this.decrypt(row.cert),
+            key: this.decrypt(row.key),
+            configured: Boolean(row.configured),
+            is_default: Boolean(row.is_default),
+            created_at: row.created_at,
+            updated_at: row.updated_at
+          };
+          return this.sanitizeForEngine(cfg);
+        });
 
         resolve(configs);
       });
@@ -250,7 +304,7 @@ class ConfigManager {
           }
 
           // Decrypt sensitive fields
-          const config = {
+          const config = this.sanitizeForEngine({
             id: row.id,
             engine: row.engine,
             name: row.name,
@@ -274,7 +328,7 @@ class ConfigManager {
             is_default: Boolean(row.is_default),
             created_at: row.created_at,
             updated_at: row.updated_at
-          };
+          });
 
           resolve(config);
         }
@@ -299,7 +353,7 @@ class ConfigManager {
           }
 
           // Decrypt sensitive fields
-          const config = {
+          const config = this.sanitizeForEngine({
             id: row.id,
             engine: row.engine,
             name: row.name,
@@ -323,7 +377,7 @@ class ConfigManager {
             is_default: Boolean(row.is_default),
             created_at: row.created_at,
             updated_at: row.updated_at
-          };
+          });
 
           resolve(config);
         }
@@ -355,6 +409,49 @@ class ConfigManager {
         );
       });
     });
+  }
+
+  // Return a sanitized copy respecting engine-specific allowed fields
+  sanitizeForEngine(input) {
+    if (!input) return input;
+    const cfg = { ...input };
+    // Normalize engine casing just in case
+    const engine = (cfg.engine || '').toLowerCase();
+    cfg.engine = engine;
+
+    if (engine === 'sqlite') {
+      // Only filePath is meaningful; clear network/SSL/SSH specifics
+      cfg.host = null;
+      cfg.port = null;
+      cfg.username = null;
+      // keep password empty string if present to avoid leaking
+      cfg.password = '';
+      cfg.database = null;
+      cfg.useSSL = false;
+      cfg.useSSH = false;
+      cfg.sshHost = null;
+      cfg.sshPort = null;
+      cfg.sshUser = null;
+      cfg.privateKey = '';
+      cfg.passphrase = '';
+      cfg.ca = '';
+      cfg.cert = '';
+      cfg.key = '';
+      // Ensure filePath at least defaults to bundled path
+      if (!cfg.filePath) {
+        cfg.filePath = join(__dirname, '..', 'drawdb.sqlite');
+      }
+    } else if (engine === 'mysql' || engine === 'postgresql') {
+      // Network engines must not carry filePath
+      cfg.filePath = null;
+      // Ensure default ports if missing
+      if (!cfg.port) {
+        cfg.port = engine === 'mysql' ? 3306 : 5432;
+      }
+      // Ensure database name defaults (avoid NULL which can confuse UI)
+      if (!cfg.database) cfg.database = 'drawdb';
+    }
+    return cfg;
   }
 
   // Delete configuration

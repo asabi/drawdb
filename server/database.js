@@ -216,11 +216,18 @@ class Database {
         } else if (!row) {
           reject(new Error('Diagram not found'));
         } else {
+          let parsedContent = null;
+          try {
+            parsedContent = typeof row.content === 'string' ? JSON.parse(row.content) : row.content;
+          } catch (e) {
+            // Fallback to empty object to avoid crashing the client on legacy/corrupt rows
+            parsedContent = {};
+          }
           resolve({
             id: row.id,
             title: row.title,
             databaseType: row.database_type,
-            content: JSON.parse(row.content),
+            content: parsedContent,
             createdAt: row.created_at,
             updatedAt: row.updated_at
           });
@@ -242,11 +249,17 @@ class Database {
     }
     
     const row = rows[0];
+    let parsedContent = null;
+    try {
+      parsedContent = typeof row.content === 'string' ? JSON.parse(row.content) : row.content;
+    } catch (e) {
+      parsedContent = {};
+    }
     return {
       id: row.id,
       title: row.title,
       databaseType: row.database_type,
-      content: JSON.parse(row.content),
+      content: parsedContent,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -263,11 +276,17 @@ class Database {
     }
     
     const row = result.rows[0];
+    let parsedContent = null;
+    try {
+      parsedContent = typeof row.content === 'string' ? JSON.parse(row.content) : row.content;
+    } catch (e) {
+      parsedContent = {};
+    }
     return {
       id: row.id,
       title: row.title,
       databaseType: row.database_type,
-      content: JSON.parse(row.content),
+      content: parsedContent,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
