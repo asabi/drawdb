@@ -11,7 +11,17 @@ ifconfig | grep "inet " | grep -v 127.0.0.1 | while read line; do
 done
 
 echo ""
+# Load environment for port configuration
+if [ -f ".env" ]; then
+    source .env
+elif [ -f "docker.env" ]; then
+    source docker.env
+fi
+
+FRONTEND_DEV_PORT=${FRONTEND_DEV_PORT:-5173}
+
 echo "💡 Use any of these IPs to access drawDB from other machines:"
-echo "   http://[IP]:5173"
+echo "   http://[IP]:${FRONTEND_DEV_PORT}"
 echo ""
-echo "🔧 Backend API: http://[IP]:3001/api/health" 
+BACKEND_PORT=${PORT:-3001}
+echo "🔧 Backend API: http://[IP]:${BACKEND_PORT}/api/health" 

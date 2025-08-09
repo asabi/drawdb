@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 class ConfigManager {
   constructor() {
     this.db = null;
-    this.configPath = join(__dirname, '..', 'config.sqlite');
+    this.configPath = process.env.CONFIG_DB_PATH || join(__dirname, '..', 'config.sqlite');
   }
 
   // Initialize the configuration database
@@ -78,7 +78,7 @@ class ConfigManager {
           }
 
           if (!row) {
-            const defaultSQLitePath = join(__dirname, '..', 'drawdb.sqlite');
+            const defaultSQLitePath = process.env.SQLITE_DB_PATH || join(__dirname, '..', 'drawdb.sqlite');
             this.db.run(
               `INSERT INTO database_configs (
                 engine, name, filePath, configured, is_default

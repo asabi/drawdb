@@ -5,7 +5,7 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const dbPath = join(__dirname, 'drawdb.sqlite');
+const dbPath = process.env.SQLITE_DB_PATH || join(__dirname, 'drawdb.sqlite');
 
 console.log('Initializing SQLite database...');
 

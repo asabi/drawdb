@@ -294,7 +294,7 @@ class ConnectionManager {
 
   async connectSQLite(config) {
     return new Promise((resolve, reject) => {
-      const dbPath = config.filePath || join(__dirname, '..', 'drawdb.sqlite');
+      const dbPath = config.filePath || process.env.SQLITE_DB_PATH || join(__dirname, '..', 'drawdb.sqlite');
       
       // Ensure directory exists
       const dir = dirname(dbPath);

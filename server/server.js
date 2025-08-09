@@ -24,13 +24,27 @@ const io = new Server(server, {
   }
 });
 
-// Rate limiting - DISABLED for internal use
-// const limiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 100 // limit each IP to 100 requests per windowMs
-// });
-
-// app.use(limiter);
+// Rate limiting configuration
+const isRateLimitEnabled = process.env.RATE_LIMIT_ENABLED !== 'false';
+if (isRateLimitEnabled) {
+  const limiter = rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes default
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // requests per windowMs
+    message: {
+      error: 'Too many requests from this IP, please try again later.',
+      retryAfter: Math.ceil((parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000) / 1000)
+    },
+    standardHeaders: true, // Return rate limit info in headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    // Skip rate limiting for health checks
+    skip: (req) => req.path === '/api/health'
+  });
+  
+  app.use(limiter);
+  console.log(`Rate limiting enabled: ${parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100} requests per ${Math.ceil((parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000) / 60000)} minutes`);
+} else {
+  console.log('Rate limiting disabled');
+}
 
 // Security middleware
 app.use(helmet({
@@ -241,7 +255,7 @@ app.get('/api/settings/status', async (req, res) => {
       connected: isConnected,
       engine: config?.engine || defaultConfig?.engine || 'sqlite',
       database: config?.database || defaultConfig?.database || null,
-      defaultSQLitePath: join(__dirname, 'drawdb.sqlite'),
+      defaultSQLitePath: process.env.SQLITE_DB_PATH || join(__dirname, 'drawdb.sqlite'),
       currentConfig: config,
       defaultConfig: defaultConfig
     });

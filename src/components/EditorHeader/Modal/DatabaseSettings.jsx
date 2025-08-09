@@ -35,10 +35,11 @@ export default function DatabaseSettings({ onClose }) {
   }, []);
 
   useEffect(() => {
-    if (status?.defaultSQLitePath && settings.engine === 'sqlite') {
+    // Only set default path if no current config is loaded and engine is sqlite
+    if (status?.defaultSQLitePath && settings.engine === 'sqlite' && !status?.currentConfig?.filePath) {
       setSettings(prev => ({ ...prev, filePath: status.defaultSQLitePath }));
     }
-  }, [status?.defaultSQLitePath, settings.engine]);
+  }, [status?.defaultSQLitePath, settings.engine, status?.currentConfig?.filePath]);
 
   const loadStatus = async () => {
     try {
@@ -59,6 +60,14 @@ export default function DatabaseSettings({ onClose }) {
           ...prev,
           ...data.defaultConfig,
           name: data.defaultConfig.name || getDefaultName(data.defaultConfig.engine)
+        }));
+      } else if (data.defaultSQLitePath) {
+        // Only set defaultSQLitePath if no configurations exist
+        setSettings(prev => ({
+          ...prev,
+          filePath: data.defaultSQLitePath,
+          engine: 'sqlite',
+          name: getDefaultName('sqlite')
         }));
       }
     } catch (error) {

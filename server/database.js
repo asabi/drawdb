@@ -12,7 +12,7 @@ const __dirname = dirname(__filename);
 
 class Database {
   constructor() {
-    this.dbPath = join(__dirname, 'drawdb.sqlite');
+    this.dbPath = process.env.SQLITE_DB_PATH || join(__dirname, 'drawdb.sqlite');
     this.db = null;
     this.schemaManager = new SchemaManager(connectionManager);
   }
