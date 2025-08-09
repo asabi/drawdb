@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomUUID } from 'crypto';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
@@ -117,7 +118,11 @@ app.post('/api/diagrams', async (req, res) => {
       database = new Database();
       await database.connect();
     }
-    const { id, title, content } = req.body;
+    let { id, title, content } = req.body;
+    // Generate an ID if one was not provided by the client
+    if (!id) {
+      id = randomUUID();
+    }
     
     // Use the current database engine from connection manager
     const currentConfig = connectionManager.getConfig();
