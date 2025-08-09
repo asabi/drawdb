@@ -22,3 +22,9 @@ server/drawdb.sqlite
 *.sln
 *.sw?
 .env
+
+# SQLite database files
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
